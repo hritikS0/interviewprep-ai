@@ -8,7 +8,7 @@ export default function Landing() {
           InterviewAI
         </span>
         <Link
-          to="/dashboard"
+          to="/login"
           className="text-[14px] font-medium text-text-secondary hover:text-text-primary transition-colors"
         >
           Sign In

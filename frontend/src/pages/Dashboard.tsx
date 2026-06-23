@@ -69,6 +69,10 @@ export default function Dashboard() {
     setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t))
   }
 
+  const userJson = localStorage.getItem('user')
+  const user = userJson ? JSON.parse(userJson) : { name: 'John Doe' }
+  const firstName = user.name ? user.name.split(' ')[0] : 'User'
+
   return (
     <div className="w-full select-none space-y-6">
       {/* Welcome Banner Card */}
@@ -79,7 +83,7 @@ export default function Dashboard() {
         <div className="absolute top-0 right-0 -mt-16 -mr-16 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
         
         <div className="space-y-1.5 text-center md:text-left relative z-10">
-          <h1 className="text-[23px] md:text-[25px] font-extrabold tracking-tight">Good morning, Ashmit 👋</h1>
+          <h1 className="text-[23px] md:text-[25px] font-extrabold tracking-tight">Good morning, {firstName} 👋</h1>
           <p className="text-[13.5px] text-zinc-300 max-w-md leading-relaxed">
             You've completed 24 practice interviews with a high average score. Ready to run your next simulation?
           </p>

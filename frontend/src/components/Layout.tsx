@@ -1,5 +1,23 @@
 import { useState, useRef, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { authService } from '../services/auth'
+
+interface SessionUser {
+  name: string
+  email: string
+}
+
+function getSessionUser(): SessionUser {
+  try {
+    const userJson = localStorage.getItem('user')
+    if (userJson) {
+      return JSON.parse(userJson)
+    }
+  } catch (e) {
+    console.error('Failed to parse user session:', e)
+  }
+  return { name: 'John Doe', email: 'john.doe@example.com' }
+}
 
 export default function Layout() {
   return (
@@ -27,6 +45,9 @@ function ProfileDropdown() {
   const dropdownRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
 
+  const user = getSessionUser()
+  const initial = user.name ? user.name.charAt(0).toUpperCase() : 'H'
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -44,7 +65,7 @@ function ProfileDropdown() {
         className="flex items-center gap-1.5 p-1 rounded-full hover:bg-[#F3F4F6] dark:hover:bg-[#27272A] transition-colors cursor-pointer focus:outline-none"
       >
         <div className="w-[28px] h-[28px] rounded-full bg-black dark:bg-white text-white dark:text-black flex items-center justify-center text-[12px] font-bold flex-shrink-0">
-          A
+          {initial}
         </div>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="text-neutral-400 dark:text-neutral-500 mr-0.5">
           <polyline points="6 9 12 15 18 9"></polyline>
@@ -55,8 +76,8 @@ function ProfileDropdown() {
         <div className="absolute right-0 mt-2 w-52 rounded-xl border border-border bg-surface shadow-lg py-1.5 z-50 origin-top-right animate-dropdown">
           {/* Header */}
           <div className="px-4 py-2 border-b border-border">
-            <div className="text-[13px] font-bold text-text-primary truncate">Ashmit Sharma</div>
-            <div className="text-[11px] text-text-secondary truncate mt-0.5 font-medium">ashmit@exmp.com</div>
+            <div className="text-[13px] font-bold text-text-primary truncate">{user.name}</div>
+            <div className="text-[11px] text-text-secondary truncate mt-0.5 font-medium">{user.email}</div>
           </div>
 
           {/* Links */}
@@ -80,7 +101,11 @@ function ProfileDropdown() {
           {/* Sign Out */}
           <div className="py-1">
             <button
-              onClick={() => { setIsOpen(false); alert('Signing out...'); navigate('/dashboard') }}
+              onClick={async () => {
+                setIsOpen(false)
+                await authService.logout()
+                navigate('/login')
+              }}
               className="w-full text-left px-4 py-1.5 text-[12.5px] font-bold text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors cursor-pointer"
             >
               Sign Out
@@ -115,6 +140,9 @@ export function Sidebar() {
         ? 'bg-[#F3F4F6] dark:bg-[#27272A] text-text-primary font-semibold'
         : 'text-text-secondary hover:text-text-primary hover:bg-[#F3F4F6]/50 dark:hover:bg-[#27272A]/50'
     }`
+
+  const user = getSessionUser()
+  const initial = user.name ? user.name.charAt(0).toUpperCase() : 'H'
 
   return (
     <aside className="fixed top-0 left-0 h-full w-60 flex flex-col border-r border-border bg-surface select-none transition-colors duration-200">
@@ -213,11 +241,11 @@ export function Sidebar() {
       <div className="px-4 py-4 border-t border-border flex items-center justify-between transition-colors">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-[28px] h-[28px] rounded-full bg-black dark:bg-white text-white dark:text-black flex items-center justify-center text-[12px] font-bold flex-shrink-0 transition-colors">
-            A
+            {initial}
           </div>
           <div className="flex flex-col min-w-0">
-            <span className="text-[13px] font-semibold text-text-primary leading-none truncate">Ashmit Sharma</span>
-            <span className="text-[11px] text-neutral-400 dark:text-neutral-500 mt-0.5 leading-none truncate">ashmit@exmp.com</span>
+            <span className="text-[13px] font-semibold text-text-primary leading-none truncate">{user.name}</span>
+            <span className="text-[11px] text-neutral-400 dark:text-neutral-500 mt-0.5 leading-none truncate">{user.email}</span>
           </div>
         </div>
         <button

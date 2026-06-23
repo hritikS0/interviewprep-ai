@@ -52,10 +52,10 @@ function ProfileSection() {
 
       <div className="space-y-5">
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="First Name" defaultValue="Ashmit" />
+          <FormField label="First Name" defaultValue="Hritik" />
           <FormField label="Last Name" defaultValue="Sharma" />
         </div>
-        <FormField label="Email" type="email" defaultValue="ashmit@example.com" />
+        <FormField label="Email" type="email" defaultValue="hritik@example.com" />
         <FormField label="Current Role" defaultValue="Software Engineer" />
         <FormField label="Years of Experience" defaultValue="5" />
       </div>

@@ -29,6 +29,12 @@ export class AuthService {
   }): Promise<AuthSuccessResponse> {
     const role = data.role || UserRole.USER;
 
+    // Check if user already exists in database
+    const existingUser = await this.authRepository.findUserByEmail(data.email);
+    if (existingUser) {
+      throw new Error("Email already registered");
+    }
+
     // 1. Sign up user in Supabase Auth
     const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
       email: data.email,
