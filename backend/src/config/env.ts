@@ -9,8 +9,7 @@ const envSchema = z.object({
   SUPABASE_URL: z.string().url("SUPABASE_URL must be a valid URL"),
   SUPABASE_ANON_KEY: z.string().min(1, "SUPABASE_ANON_KEY is required"),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, "SUPABASE_SERVICE_ROLE_KEY is required"),
-  JWT_SECRET: z.string().min(8, "JWT_SECRET must be at least 8 characters long"),
-  JWT_REFRESH_SECRET: z.string().min(8, "JWT_REFRESH_SECRET must be at least 8 characters long"),
+  JWT_SECRET: z.string().min(8, "JWT_SECRET (Supabase JWT Secret) is required and must be at least 8 characters long"),
 });
 
 const parsed = envSchema.safeParse(process.env);

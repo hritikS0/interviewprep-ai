@@ -1,6 +1,5 @@
-import bcrypt from "bcrypt";
+import { supabase, supabaseAdmin } from "../../config/supabase";
 import { AuthRepository } from "./auth.repository";
-import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from "../../utils/jwt";
 import { AuthSuccessResponse, UserResponse, TokenRefreshResponse } from "./auth.types";
 import { UserRole, User } from "@prisma/client";
 
@@ -28,37 +27,45 @@ export class AuthService {
     password: string;
     role?: UserRole;
   }): Promise<AuthSuccessResponse> {
-    const existingUser = await this.authRepository.findUserByEmail(data.email);
-    if (existingUser) {
-      throw new Error("User with this email already exists");
+    const role = data.role || UserRole.USER;
+
+    // 1. Sign up user in Supabase Auth
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email: data.email,
+      password: data.password,
+      options: {
+        data: {
+          name: data.name,
+          role,
+        },
+      },
+    });
+
+    if (signUpError || !signUpData.user) {
+      throw new Error(signUpError?.message || "Sign up failed");
     }
 
-    const saltRounds = 10;
-    const passwordHash = await bcrypt.hash(data.password, saltRounds);
+    const supabaseUser = signUpData.user;
+    const session = signUpData.session;
 
-    const user = await this.authRepository.createUser({
-      name: data.name,
-      email: data.email,
-      passwordHash,
-      role: data.role,
-    });
-
-    const accessToken = generateAccessToken({ userId: user.id, role: user.role });
-    const refreshTokenString = generateRefreshToken({ userId: user.id, role: user.role });
-
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7);
-
-    await this.authRepository.createRefreshToken({
-      token: refreshTokenString,
-      userId: user.id,
-      expiresAt,
-    });
+    // 2. Synchronize user profile into our public User database
+    let user: User;
+    try {
+      user = await this.authRepository.createUser({
+        id: supabaseUser.id,
+        name: data.name,
+        email: data.email,
+        role,
+      });
+    } catch (dbError) {
+      console.error("❌ Sync database error:", dbError);
+      throw new Error("Failed to register user in application database");
+    }
 
     return {
       user: this.mapToUserResponse(user),
-      accessToken,
-      refreshToken: refreshTokenString,
+      accessToken: session?.access_token || "",
+      refreshToken: session?.refresh_token || "",
     };
   }
 
@@ -66,60 +73,66 @@ export class AuthService {
     email: string;
     password: string;
   }): Promise<AuthSuccessResponse> {
-    const user = await this.authRepository.findUserByEmail(data.email);
-    if (!user) {
-      throw new Error("Invalid email or password");
-    }
-
-    const passwordMatch = await bcrypt.compare(data.password, user.passwordHash);
-    if (!passwordMatch) {
-      throw new Error("Invalid email or password");
-    }
-
-    const accessToken = generateAccessToken({ userId: user.id, role: user.role });
-    const refreshTokenString = generateRefreshToken({ userId: user.id, role: user.role });
-
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7);
-
-    await this.authRepository.createRefreshToken({
-      token: refreshTokenString,
-      userId: user.id,
-      expiresAt,
+    // 1. Authenticate with Supabase Auth
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+      email: data.email,
+      password: data.password,
     });
+
+    if (signInError || !signInData.user || !signInData.session) {
+      throw new Error(signInError?.message || "Authentication failed");
+    }
+
+    const supabaseUser = signInData.user;
+    const session = signInData.session;
+
+    // 2. Retrieve user details from our database
+    let user = await this.authRepository.findUserById(supabaseUser.id);
+    if (!user) {
+      // Fallback: If user exists in Supabase Auth but not in our public database (e.g. manual cleanup/sync lag)
+      const name = supabaseUser.user_metadata?.name || "User";
+      const role = (supabaseUser.user_metadata?.role as UserRole) || UserRole.USER;
+      
+      user = await this.authRepository.createUser({
+        id: supabaseUser.id,
+        name,
+        email: data.email,
+        role,
+      });
+    }
 
     return {
       user: this.mapToUserResponse(user),
-      accessToken,
-      refreshToken: refreshTokenString,
+      accessToken: session.access_token,
+      refreshToken: session.refresh_token,
     };
   }
 
-  async refresh(refreshTokenString: string): Promise<TokenRefreshResponse> {
-    // Validate signature & expiration of refresh token
-    try {
-      verifyRefreshToken(refreshTokenString);
-    } catch (err) {
-      throw new Error("Invalid or expired refresh token");
-    }
-
-    const storedToken = await this.authRepository.findRefreshToken(refreshTokenString);
-    if (!storedToken || storedToken.expiresAt < new Date()) {
-      throw new Error("Invalid or expired refresh token");
-    }
-
-    const accessToken = generateAccessToken({
-      userId: storedToken.user.id,
-      role: storedToken.user.role,
+  async refresh(refreshToken: string): Promise<TokenRefreshResponse> {
+    const { data, error } = await supabase.auth.refreshSession({
+      refresh_token: refreshToken,
     });
 
+    if (error || !data.session) {
+      throw new Error(error?.message || "Failed to refresh token");
+    }
+
     return {
-      accessToken,
+      accessToken: data.session.access_token,
+      refreshToken: data.session.refresh_token,
     };
   }
 
-  async logout(refreshTokenString: string): Promise<void> {
-    await this.authRepository.deleteRefreshToken(refreshTokenString);
+  async logout(accessToken: string): Promise<void> {
+    // Sign out user globally using the Admin SDK and their token
+    const { error } = await supabaseAdmin.auth.admin.signOut(accessToken, "global");
+    if (error) {
+      console.warn("⚠️ Admin global signOut failed, falling back to local signOut:", error.message);
+      const { error: localSignOutError } = await supabase.auth.signOut();
+      if (localSignOutError) {
+        throw new Error(localSignOutError.message);
+      }
+    }
   }
 
   async getProfile(userId: string): Promise<UserResponse> {

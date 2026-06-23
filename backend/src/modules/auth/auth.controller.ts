@@ -57,13 +57,18 @@ export class AuthController {
 
   logout = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const parsed = RefreshTokenSchema.safeParse(req.body);
-      if (!parsed.success) {
-        sendError(res, parsed.error.issues[0]?.message || "Validation failed", 400);
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        sendError(res, "Missing or invalid authorization token", 401);
+        return;
+      }
+      const token = authHeader.split(" ")[1];
+      if (!token) {
+        sendError(res, "Missing token", 401);
         return;
       }
 
-      await this.authService.logout(parsed.data.refreshToken);
+      await this.authService.logout(token);
       sendSuccess(res, { message: "Successfully logged out" }, 200);
     } catch (error: unknown) {
       next(error);
