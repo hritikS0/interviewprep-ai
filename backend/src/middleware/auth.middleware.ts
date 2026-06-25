@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { env } from "../config/env";
+import { supabaseAdmin } from "../config/supabase";
 import { sendError } from "../utils/response";
 import { UserRole } from "@prisma/client";
 
@@ -28,7 +29,7 @@ declare global {
   }
 }
 
-export const authMiddleware = (req: Request, res: Response, next: NextFunction): void => {
+export const authMiddleware = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const authHeader = req.headers.authorization;
 
@@ -44,16 +45,34 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction):
       return;
     }
 
-    const decoded = jwt.verify(token, env.JWT_SECRET) as SupabaseTokenPayload;
+    const user = await verifyToken(token);
 
-    req.user = {
-      userId: decoded.sub,
-      email: decoded.email || "",
-      role: decoded.user_metadata?.role || UserRole.USER,
-    };
-
+    req.user = user;
     next();
   } catch (error) {
     sendError(res, "Unauthorized: Invalid or expired token", 401);
   }
 };
+
+async function verifyToken(token: string): Promise<AuthenticatedUser> {
+  try {
+    const decoded = jwt.verify(token, env.JWT_SECRET) as SupabaseTokenPayload;
+    return {
+      userId: decoded.sub,
+      email: decoded.email || "",
+      role: decoded.user_metadata?.role || UserRole.USER,
+    };
+  } catch {
+    const { data, error } = await supabaseAdmin.auth.getUser(token);
+
+    if (error || !data.user) {
+      throw new Error("Token verification failed");
+    }
+
+    return {
+      userId: data.user.id,
+      email: data.user.email || "",
+      role: (data.user.user_metadata?.role as UserRole) || UserRole.USER,
+    };
+  }
+}

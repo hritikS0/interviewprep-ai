@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Sidebar } from '../components/Layout'
 
 const sections = [
@@ -16,6 +16,13 @@ export default function LiveInterview() {
   const [timeStr, setTimeStr] = useState('18:42')
   
   const navigate = useNavigate()
+  const { interviewId } = useParams<{ interviewId: string }>()
+  
+  useEffect(() => {
+    if (interviewId) {
+      localStorage.setItem('currentInterviewId', interviewId)
+    }
+  }, [interviewId])
 
   // Live ticking clock for top-right (e.g. 18:42 format)
   useEffect(() => {

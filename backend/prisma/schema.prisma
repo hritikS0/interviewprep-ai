@@ -23,15 +23,23 @@ model User {
 }
 
 model Interview {
-  id            String   @id @default(uuid())
-  userId        String
-  user          User     @relation(fields: [userId], references: [id])
-  role          String
-  experience    Int
-  interviewType String
-  createdAt     DateTime @default(now())
-  
-  questions     Question[]
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id])
+  role             String
+  experienceLevel  String
+  interviewType    String
+  difficulty       String
+  preferredLanguage String
+  duration         Int
+  companyName      String?
+  jobDescription   String?
+  status           String   @default("PENDING")
+  currentRound     Int      @default(1)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  questions        Question[]
 }
 
 model Question {

@@ -148,6 +148,7 @@ export default function App() {
           <Route path="/settings" element={<Settings />} />
         </Route>
         <Route path="/interview" element={<LiveInterview />} />
+        <Route path="/interview/:interviewId" element={<LiveInterview />} />
         <Route path="/coding" element={<CodingRound />} />
       </Route>
     </Routes>
