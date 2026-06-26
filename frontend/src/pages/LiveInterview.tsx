@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Sidebar } from '../components/Layout'
 import { interviewService } from '../services/interview'
@@ -12,10 +12,59 @@ export default function LiveInterview() {
   
   const [answer, setAnswer] = useState('')
   const [isRecording, setIsRecording] = useState(false)
-  const [timeStr, setTimeStr] = useState('12:00')
-  
+  const [interimText, setInterimText] = useState('')
+  const [micNetworkError, setMicNetworkError] = useState(false)
+  const [timeLeft, setTimeLeft] = useState<number | null>(null)
+  const lastProcessedIndexRef = useRef(-1)
+  const [isGrading, setIsGrading] = useState(false)
+  const [gradingError, setGradingError] = useState('')
   const navigate = useNavigate()
   const { interviewId } = useParams<{ interviewId: string }>()
+
+  const rounds = interview?.interviewPlan?.rounds || []
+  
+  // Flatten all questions for indexing and total progress count
+  const allQuestions: any[] = []
+  rounds.forEach((round: any, roundIdx: number) => {
+    const questions = round.questions || []
+    questions.forEach((q: any) => {
+      allQuestions.push({
+        ...q,
+        roundName: round.name,
+        roundIdx,
+      })
+    })
+  })
+
+  const totalQuestions = allQuestions.length
+  const isCompleted = totalQuestions > 0 && flatQuestionIndex >= totalQuestions
+  const currentQuestion = isCompleted ? allQuestions[totalQuestions - 1] : allQuestions[flatQuestionIndex]
+  const activeRoundIndex = isCompleted ? rounds.length : currentQuestion?.roundIdx
+
+  const answerRef = useRef(answer)
+  useEffect(() => {
+    answerRef.current = answer
+  }, [answer])
+
+  const currentQuestionRef = useRef(currentQuestion)
+  useEffect(() => {
+    currentQuestionRef.current = currentQuestion
+  }, [currentQuestion])
+
+  // Load previous answer if it exists when question index changes
+  useEffect(() => {
+    if (!interview || !currentQuestion) return;
+    const savedQ = interview.questions?.find((q: any) => q.questionText === currentQuestion.question);
+    if (savedQ && savedQ.answerText) {
+      if (savedQ.answerText === "Skipped (No answer provided)") {
+        setAnswer("");
+      } else {
+        setAnswer(savedQ.answerText);
+      }
+    } else {
+      setAnswer("");
+    }
+  }, [flatQuestionIndex, interview, currentQuestion]);
   
   // Load interview details
   useEffect(() => {
@@ -45,6 +94,23 @@ export default function LiveInterview() {
     loadInterview()
   }, [interviewId])
 
+  const updateLocalAnswer = (questionText: string, answerText: string) => {
+    setInterview((prev: any) => {
+      if (!prev) return prev;
+      const questions = prev.questions || [];
+      const index = questions.findIndex((q: any) => q.questionText === questionText);
+      let updatedQuestions;
+      if (index !== -1) {
+        updatedQuestions = questions.map((q: any, i: number) => 
+          i === index ? { ...q, answerText } : q
+        );
+      } else {
+        updatedQuestions = [...questions, { questionText, answerText }];
+      }
+      return { ...prev, questions: updatedQuestions };
+    });
+  }
+
   // Save current interviewId to local storage
   useEffect(() => {
     if (interviewId) {
@@ -52,38 +118,176 @@ export default function LiveInterview() {
     }
   }, [interviewId])
 
-  // Live ticking clock for top-right
+  // Synchronized countdown timer utilizing localStorage
   useEffect(() => {
-    const updateTime = () => {
-      const now = new Date()
-      const hrs = String(now.getHours()).padStart(2, '0')
-      const mins = String(now.getMinutes()).padStart(2, '0')
-      setTimeStr(`${hrs}:${mins}`)
+    if (!interview || !interviewId) return
+
+    const storageKey = `interview_end_time_${interviewId}`
+    let endTimeStr = localStorage.getItem(storageKey)
+    let endTime = endTimeStr ? parseInt(endTimeStr, 10) : null
+
+    if (!endTime) {
+      const durationMin = interview.duration || 30
+      endTime = Date.now() + durationMin * 60 * 1000
+      localStorage.setItem(storageKey, String(endTime))
     }
-    updateTime()
-    const timer = setInterval(updateTime, 1000)
-    return () => clearInterval(timer)
-  }, [])
 
-  // Simulating voice recording typing effect
-  useEffect(() => {
-    if (!isRecording) return
-    
-    const mockSpeechText = "To address this question, we should first establish the core constraints. We need to evaluate the optimal approach here, ensuring the solution is robust and handles boundary cases at scale. From a technical standpoint, we want to achieve minimal latency and optimal resource usage..."
-    let index = 0
-    setAnswer('')
-    
-    const textInterval = setInterval(() => {
-      if (index < mockSpeechText.length) {
-        setAnswer(prev => prev + mockSpeechText[index])
-        index++
-      } else {
-        setIsRecording(false)
+    const calculateTimeLeft = () => {
+      const difference = endTime! - Date.now()
+      if (difference <= 0) {
+        return 0
       }
-    }, 45)
+      return Math.floor(difference / 1000)
+    }
 
-    return () => clearInterval(textInterval)
+    setTimeLeft(calculateTimeLeft())
+
+    const intervalId = setInterval(() => {
+      const remaining = calculateTimeLeft()
+      setTimeLeft(remaining)
+      if (remaining <= 0) {
+        clearInterval(intervalId)
+      }
+    }, 1000)
+
+    return () => clearInterval(intervalId)
+  }, [interview, interviewId])
+
+  // Handle auto-submit when timer expires
+  useEffect(() => {
+    if (timeLeft !== null && timeLeft <= 0 && !isCompleted && !loading) {
+      const forceFinishInterview = async () => {
+        const curQuestion = currentQuestionRef.current
+        const curAnswer = answerRef.current
+        
+        if (curQuestion && curQuestion.type !== 'CODING' && curAnswer.trim()) {
+          try {
+            await interviewService.saveAnswer(interviewId!, curQuestion.question, curAnswer)
+            updateLocalAnswer(curQuestion.question, curAnswer)
+          } catch (err) {
+            console.error('Failed to save final answer on timeout:', err)
+          }
+        }
+        
+        toast.error("Time is up! Submitting your interview...")
+        setFlatQuestionIndex(totalQuestions)
+      }
+
+      forceFinishInterview()
+    }
+  }, [timeLeft, isCompleted, loading, interviewId, totalQuestions])
+
+  const formatTimeLeft = (seconds: number | null) => {
+    if (seconds === null) return '--:--'
+    if (seconds <= 0) return '00:00'
+    const hrs = Math.floor(seconds / 3600)
+    const mins = Math.floor((seconds % 3600) / 60)
+    const secs = seconds % 60
+
+    if (hrs > 0) {
+      return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+    }
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+  }
+
+  // Web Speech API for voice-to-text recording
+  useEffect(() => {
+    if (!isRecording) {
+      setInterimText('')
+      return
+    }
+    setMicNetworkError(false)
+    lastProcessedIndexRef.current = -1
+    setInterimText('')
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      toast.error("Speech recognition is not supported in this browser. Please use Chrome, Safari or Edge, or type your answer.")
+      setIsRecording(false)
+      return
+    }
+
+    const recognition = new SpeechRecognition()
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.lang = 'en-US'
+
+    recognition.onresult = (event: any) => {
+      let newInterimText = ''
+      let finalChunk = ''
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i]
+        if (result.isFinal) {
+          if (i > lastProcessedIndexRef.current) {
+            finalChunk += result[0].transcript
+            lastProcessedIndexRef.current = i
+          }
+        } else {
+          newInterimText += result[0].transcript
+        }
+      }
+
+      if (finalChunk) {
+        setAnswer(prev => {
+          const trimmed = prev.trim()
+          const chunkTrimmed = finalChunk.trim()
+          return trimmed ? `${trimmed} ${chunkTrimmed}` : chunkTrimmed
+        })
+      }
+      setInterimText(newInterimText)
+    }
+
+    recognition.onerror = (event: any) => {
+      console.error("Speech recognition error:", event.error)
+      if (event.error === 'not-allowed') {
+        toast.error("Microphone access denied. Please enable mic permissions in your browser settings.")
+      } else if (event.error === 'network') {
+        setMicNetworkError(true)
+        toast.error("Speech recognition network error. The browser's speech transcription server could not be reached. Please check your internet connection or type your answer.")
+      } else {
+        toast.error(`Mic error: ${event.error}. You can type your answer instead.`)
+      }
+      setIsRecording(false)
+      setInterimText('')
+    }
+
+    recognition.onend = () => {
+      setIsRecording(false)
+      setInterimText('')
+    }
+
+    recognition.start()
+
+    return () => {
+      recognition.stop()
+      setInterimText('')
+    }
   }, [isRecording])
+
+  // Automatically trigger report generation when interview is completed
+  useEffect(() => {
+    if (!isCompleted || !interviewId) return
+
+    const generateReport = async () => {
+      setIsGrading(true)
+      setGradingError('')
+      try {
+        await interviewService.submitInterview(interviewId)
+        toast.success('Report generated successfully!')
+        localStorage.removeItem(`interview_progress_${interviewId}`)
+        navigate(`/report?interviewId=${interviewId}`)
+      } catch (err: any) {
+        console.error('Failed to generate report:', err)
+        setGradingError(err.message || 'Failed to generate report')
+        toast.error('Failed to generate report')
+      } finally {
+        setIsGrading(false)
+      }
+    }
+
+    generateReport()
+  }, [isCompleted, interviewId, navigate])
 
   if (loading) {
     return (
@@ -113,23 +317,6 @@ export default function LiveInterview() {
     )
   }
 
-  const rounds = interview.interviewPlan.rounds || []
-  
-  // Flatten all questions for indexing and total progress count
-  const allQuestions: any[] = []
-  rounds.forEach((round: any, roundIdx: number) => {
-    const questions = round.questions || []
-    questions.forEach((q: any) => {
-      allQuestions.push({
-        ...q,
-        roundName: round.name,
-        roundIdx,
-      })
-    })
-  })
-
-  const totalQuestions = allQuestions.length
-
   if (totalQuestions === 0) {
     return (
       <div className="flex h-screen items-center justify-center bg-[#FAFAF9] dark:bg-[#09090B] text-text-primary">
@@ -142,12 +329,6 @@ export default function LiveInterview() {
       </div>
     )
   }
-
-  // Get active question
-  // Handle case where index exceeds bounds (interview completed)
-  const isCompleted = flatQuestionIndex >= totalQuestions
-  const currentQuestion = isCompleted ? allQuestions[totalQuestions - 1] : allQuestions[flatQuestionIndex]
-  const activeRoundIndex = isCompleted ? rounds.length : currentQuestion.roundIdx
 
   // Build sections display list dynamically
   const sections = rounds.map((round: any, rIndex: number) => {
@@ -169,35 +350,104 @@ export default function LiveInterview() {
     return (
       <div className="flex h-screen bg-[#FAFAF9] dark:bg-[#09090B] items-center justify-center p-6 text-text-primary">
         <div className="text-center max-w-sm border border-border bg-surface p-8 rounded-[16px] shadow-xs">
-          <div className="w-12 h-12 rounded-full bg-green-50 dark:bg-green-950/20 text-green-500 flex items-center justify-center mx-auto mb-4">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-              <polyline points="22 4 12 14.01 9 11.01"></polyline>
-            </svg>
-          </div>
-          <h2 className="text-[20px] font-extrabold mb-2">Interview Completed!</h2>
-          <p className="text-[13px] text-text-secondary mb-6 leading-relaxed">
-            You have answered all questions. Our AI is now grading your responses to generate a detailed feedback report.
-          </p>
-          <button
-            onClick={() => {
-              localStorage.removeItem(`interview_progress_${interviewId}`);
-              navigate('/dashboard');
-            }}
-            className="w-full py-2.5 rounded-[12px] bg-black dark:bg-white text-white dark:text-black text-[13.5px] font-bold hover:bg-neutral-850 dark:hover:bg-neutral-100 transition-colors cursor-pointer"
-          >
-            Back to Dashboard
-          </button>
+          {isGrading ? (
+            <>
+              <div className="w-12 h-12 rounded-full bg-blue-50 dark:bg-blue-950/20 text-blue-500 flex items-center justify-center mx-auto mb-4 animate-spin">
+                <svg className="h-6 w-6 text-current" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </div>
+              <h2 className="text-[20px] font-extrabold mb-2">Grading Interview...</h2>
+              <p className="text-[13px] text-text-secondary mb-6 leading-relaxed">
+                Please wait while our AI grades your responses and compiles your feedback report. This might take up to a minute.
+              </p>
+            </>
+          ) : gradingError ? (
+            <>
+              <div className="w-12 h-12 rounded-full bg-red-50 dark:bg-red-950/20 text-red-500 flex items-center justify-center mx-auto mb-4">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+              </div>
+              <h2 className="text-[20px] font-extrabold mb-2">Grading Failed</h2>
+              <p className="text-[13px] text-red-500 font-semibold mb-6 leading-relaxed">
+                {gradingError}
+              </p>
+              <div className="space-y-2">
+                <button
+                  onClick={async () => {
+                    setIsGrading(true);
+                    setGradingError('');
+                    try {
+                      await interviewService.submitInterview(interviewId!);
+                      toast.success('Report generated successfully!');
+                      localStorage.removeItem(`interview_progress_${interviewId}`);
+                      navigate(`/report?interviewId=${interviewId}`);
+                    } catch (err: any) {
+                      setGradingError(err.message || 'Failed to generate report');
+                    } finally {
+                      setIsGrading(false);
+                    }
+                  }}
+                  className="w-full py-2.5 rounded-[12px] bg-black dark:bg-white text-white dark:text-black text-[13.5px] font-bold hover:bg-neutral-850 dark:hover:bg-neutral-100 transition-colors cursor-pointer"
+                >
+                  Retry Grading
+                </button>
+                <button
+                  onClick={() => {
+                    localStorage.removeItem(`interview_progress_${interviewId}`);
+                    navigate('/dashboard');
+                  }}
+                  className="w-full py-2.5 rounded-[12px] border border-border text-text-primary text-[13.5px] font-bold hover:bg-neutral-50 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                >
+                  Back to Dashboard
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="w-12 h-12 rounded-full bg-green-50 dark:bg-green-950/20 text-green-500 flex items-center justify-center mx-auto mb-4">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                  <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+              </div>
+              <h2 className="text-[20px] font-extrabold mb-2">Interview Completed!</h2>
+              <p className="text-[13px] text-text-secondary mb-6 leading-relaxed">
+                You have answered all questions. Click below to view your report.
+              </p>
+              <button
+                onClick={() => {
+                  localStorage.removeItem(`interview_progress_${interviewId}`);
+                  navigate(`/report?interviewId=${interviewId}`);
+                }}
+                className="w-full py-2.5 rounded-[12px] bg-black dark:bg-white text-white dark:text-black text-[13.5px] font-bold hover:bg-neutral-850 dark:hover:bg-neutral-100 transition-colors cursor-pointer"
+              >
+                View Report
+              </button>
+            </>
+          )}
         </div>
       </div>
-    )
+    );
   }
 
   // Handle submit answer
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (currentQuestion.type === 'CODING') {
       navigate(`/coding?interviewId=${interviewId}`)
       return
+    }
+
+    try {
+      await interviewService.saveAnswer(interviewId!, currentQuestion.question, answer);
+      updateLocalAnswer(currentQuestion.question, answer);
+    } catch (err: any) {
+      console.error('Failed to save answer:', err);
+      toast.error('Failed to save answer. Proceeding anyway...');
     }
 
     setAnswer('') // Clear answer box
@@ -218,6 +468,51 @@ export default function LiveInterview() {
     }
   }
 
+  // Handle skip answer
+  const handleSkip = async () => {
+    try {
+      await interviewService.saveAnswer(interviewId!, currentQuestion.question, "Skipped (No answer provided)");
+      updateLocalAnswer(currentQuestion.question, "Skipped (No answer provided)");
+    } catch (err: any) {
+      console.error('Failed to save answer:', err);
+    }
+
+    setAnswer('') // Clear answer box
+
+    const nextIndex = flatQuestionIndex + 1;
+    localStorage.setItem(`interview_progress_${interviewId}`, String(nextIndex));
+
+    if (nextIndex < totalQuestions) {
+      const nextQuestion = allQuestions[nextIndex]
+      if (nextQuestion.type === 'CODING') {
+        navigate(`/coding?interviewId=${interviewId}`)
+      } else {
+        setFlatQuestionIndex(nextIndex)
+      }
+    } else {
+      setFlatQuestionIndex(nextIndex)
+      toast.success('Interview completed!')
+    }
+  }
+
+  // Handle back to previous question
+  const handleBack = async () => {
+    if (answer.trim()) {
+      try {
+        await interviewService.saveAnswer(interviewId!, currentQuestion.question, answer);
+        updateLocalAnswer(currentQuestion.question, answer);
+      } catch (err) {
+        console.error('Failed to save answer before going back:', err);
+      }
+    }
+
+    const prevIndex = flatQuestionIndex - 1;
+    if (prevIndex >= 0) {
+      localStorage.setItem(`interview_progress_${interviewId}`, String(prevIndex));
+      setFlatQuestionIndex(prevIndex);
+    }
+  }
+
   return (
     <div className="flex h-screen bg-[#FAFAF9] dark:bg-[#09090B] overflow-hidden select-none font-sans transition-colors duration-200">
       <Sidebar />
@@ -234,8 +529,8 @@ export default function LiveInterview() {
           </div>
 
           <div className="flex items-center gap-4">
-            <span className="text-[13px] font-bold text-text-primary tracking-wide">
-              {timeStr}
+            <span className="text-[13px] font-bold text-text-primary tracking-wide font-mono">
+              {formatTimeLeft(timeLeft)}
             </span>
             <Link
               to="/dashboard"
@@ -368,40 +663,83 @@ export default function LiveInterview() {
                   </div>
                 </div>
               ) : (
-                <textarea
-                  value={answer}
-                  onChange={(e) => setAnswer(e.target.value)}
-                  placeholder="Type your response or use voice..."
-                  className="flex-1 w-full p-5 text-[14px] text-text-primary dark:text-white placeholder:text-text-secondary/60 border-0 outline-none resize-none leading-relaxed focus:ring-0 focus:outline-none bg-surface"
-                />
+                <>
+                  <textarea
+                    value={answer}
+                    onChange={(e) => setAnswer(e.target.value)}
+                    placeholder="Type your response or use voice..."
+                    className="flex-1 w-full p-5 text-[14px] text-text-primary dark:text-white placeholder:text-text-secondary/60 border-0 outline-none resize-none leading-relaxed focus:ring-0 focus:outline-none bg-surface"
+                  />
+                  {isRecording && interimText && (
+                    <div className="px-5 py-3 text-[12px] text-text-secondary italic border-t border-border bg-neutral-50/30 dark:bg-[#18181b]/30 flex items-center gap-2 flex-shrink-0">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-600"></span>
+                      </span>
+                      <span>"{interimText}"</span>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
             <div className="border-t border-border p-5 bg-surface space-y-3.5 flex-shrink-0 transition-colors duration-200">
               {currentQuestion.type !== 'CODING' && (
-                <button
-                  onClick={() => setIsRecording(!isRecording)}
-                  className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-full border text-[13px] font-bold transition-all duration-200 cursor-pointer ${
-                    isRecording
-                      ? 'border-red-500 bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 animate-pulse'
-                      : 'border-border bg-surface hover:bg-neutral-50 dark:hover:bg-[#27272A] text-text-primary'
-                  }`}
-                >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                    <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
-                    <line x1="12" y1="19" x2="12" y2="22" />
-                  </svg>
-                  {isRecording ? 'Listening... click to stop' : 'Record voice'}
-                </button>
+                <>
+                  <button
+                    onClick={() => setIsRecording(!isRecording)}
+                    className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-full border text-[13px] font-bold transition-all duration-200 cursor-pointer ${
+                      isRecording
+                        ? 'border-red-500 bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 animate-pulse'
+                        : 'border-border bg-surface hover:bg-neutral-50 dark:hover:bg-[#27272A] text-text-primary'
+                    }`}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                      <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+                      <line x1="12" y1="19" x2="12" y2="22" />
+                    </svg>
+                    {isRecording ? 'Listening... click to stop' : 'Record voice'}
+                  </button>
+                  {micNetworkError && (
+                    <div className="p-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10 text-[11.5px] text-amber-700 dark:text-amber-400 leading-normal font-medium">
+                      ⚠️ Speech recognition server is unreachable. If you're using macOS, try opening this page in <strong>Safari</strong> (which uses Apple's offline-supported transcription engine) or type your answer directly.
+                    </div>
+                  )}
+                </>
               )}
 
-              <button
-                onClick={handleSubmit}
-                className="w-full py-2.5 rounded-full bg-black dark:bg-white text-white dark:text-black text-[13px] font-bold hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors cursor-pointer"
-              >
-                {currentQuestion.type === 'CODING' ? 'Start coding' : 'Submit answer'}
-              </button>
+              {currentQuestion.type === 'CODING' ? (
+                <button
+                  onClick={handleSubmit}
+                  className="w-full py-2.5 rounded-full bg-black dark:bg-white text-white dark:text-black text-[13px] font-bold hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors cursor-pointer"
+                >
+                  Start coding
+                </button>
+              ) : (
+                <div className="flex gap-3">
+                  {flatQuestionIndex > 0 && (
+                    <button
+                      onClick={handleBack}
+                      className="flex-1 py-2.5 rounded-full border border-border bg-surface hover:bg-neutral-50 dark:hover:bg-[#27272A] text-text-primary text-[13px] font-bold transition-colors cursor-pointer"
+                    >
+                      Back
+                    </button>
+                  )}
+                  <button
+                    onClick={handleSkip}
+                    className="flex-1 py-2.5 rounded-full border border-border bg-surface hover:bg-neutral-50 dark:hover:bg-[#27272A] text-text-primary text-[13px] font-bold transition-colors cursor-pointer"
+                  >
+                    Skip
+                  </button>
+                  <button
+                    onClick={handleSubmit}
+                    className="flex-1 py-2.5 rounded-full bg-black dark:bg-white text-white dark:text-black text-[13px] font-bold hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors cursor-pointer"
+                  >
+                    Submit
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

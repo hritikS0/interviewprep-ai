@@ -12,7 +12,7 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(8, "JWT_SECRET (Supabase JWT Secret) is required and must be at least 8 characters long"),
   NVIDIA_API_KEY: z.string().optional(),
   NVIDIA_API_URL: z.string().url().default("https://integrate.api.nvidia.com/v1"),
-  NVIDIA_MODEL: z.string().default("meta/llama-3.1-70b-instruct"),
+  NVIDIA_MODEL: z.string().default("meta/llama-3.1-8b-instruct"),
   ENCRYPTION_KEY: z.string().min(32, "ENCRYPTION_KEY must be at least 32 characters long").default("fallback_encryption_key_32_chars_long_for_dev_only"),
 });
 

@@ -18,7 +18,10 @@ export class ClaudeProvider implements AIProvider {
     throw new Error("Method not implemented.");
   }
 
-  async generateReport(): Promise<any> {
+  async generateReport(
+    systemPrompt: string,
+    userPrompt: string
+  ): Promise<any> {
     throw new Error("Method not implemented.");
   }
 }

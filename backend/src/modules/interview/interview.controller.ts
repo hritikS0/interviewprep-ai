@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { InterviewService } from "./interview.service";
-import { CreateInterviewSchema } from "./interview.schema";
+import { CreateInterviewSchema, SaveAnswerSchema } from "./interview.schema";
 import { sendSuccess, sendError } from "../../utils/response";
 import { InterviewGenerator } from "../../services/interview-generator";
 
@@ -122,6 +122,61 @@ export class InterviewController {
       res.status(200).json({
         success: true,
         message: "Interview plan generated successfully.",
+        data: result,
+      });
+    } catch (error: unknown) {
+      next(error);
+    }
+  };
+
+  saveAnswer = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user) {
+        sendError(res, "Unauthorized", 401);
+        return;
+      }
+
+      const { id: interviewId } = req.params as { id: string };
+      const parsed = SaveAnswerSchema.safeParse(req.body);
+      if (!parsed.success) {
+        const messages = parsed.error.issues.map((i) => i.message).join(", ");
+        sendError(res, messages, 422);
+        return;
+      }
+
+      const result = await this.interviewService.saveAnswer(
+        interviewId,
+        req.user.userId,
+        parsed.data.questionText,
+        parsed.data.answerText
+      );
+
+      res.status(200).json({
+        success: true,
+        message: "Answer saved successfully.",
+        data: result,
+      });
+    } catch (error: unknown) {
+      next(error);
+    }
+  };
+
+  submitInterview = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user) {
+        sendError(res, "Unauthorized", 401);
+        return;
+      }
+
+      const { id: interviewId } = req.params as { id: string };
+      const result = await this.interviewService.submitAndGradeInterview(
+        interviewId,
+        req.user.userId
+      );
+
+      res.status(200).json({
+        success: true,
+        message: "Interview submitted and report generated successfully.",
         data: result,
       });
     } catch (error: unknown) {

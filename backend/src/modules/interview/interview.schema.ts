@@ -16,3 +16,10 @@ export const CreateInterviewSchema = z.object({
 });
 
 export type CreateInterviewInput = z.infer<typeof CreateInterviewSchema>;
+
+export const SaveAnswerSchema = z.object({
+  questionText: z.string().min(1, "Question text is required"),
+  answerText: z.string(),
+});
+
+export type SaveAnswerInput = z.infer<typeof SaveAnswerSchema>;

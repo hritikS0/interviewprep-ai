@@ -193,22 +193,7 @@ export function Sidebar() {
           New Interview
         </NavLink>
 
-        <NavLink to="/interview" className={linkClass}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
-            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-            <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
-            <line x1="12" y1="19" x2="12" y2="22" />
-          </svg>
-          Live Interview
-        </NavLink>
 
-        <NavLink to="/coding" className={linkClass}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
-            <polyline points="16 18 22 12 16 6" />
-            <polyline points="8 6 2 12 8 18" />
-          </svg>
-          Coding Round
-        </NavLink>
 
         <NavLink to="/report" className={linkClass}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">

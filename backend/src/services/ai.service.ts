@@ -84,4 +84,72 @@ export class AiService {
       throw error;
     }
   }
+
+  async generateReport(
+    userId: string,
+    interviewId: string,
+    systemPrompt: string,
+    userPrompt: string
+  ): Promise<any> {
+    const startTime = Date.now();
+    let resolvedConfig;
+    
+    try {
+      resolvedConfig = await this.resolver.resolve(userId);
+    } catch (error: any) {
+      const latencyMs = Date.now() - startTime;
+      await prisma.aIRequest.create({
+        data: {
+          interviewId,
+          userId,
+          provider: "UNKNOWN",
+          model: "UNKNOWN",
+          latencyMs,
+          success: false,
+          error: error.message || "Configuration resolution failed",
+        },
+      });
+      throw error;
+    }
+
+    const providerInstance = this.factory.create(resolvedConfig);
+
+    try {
+      const response = await providerInstance.generateReport(systemPrompt, userPrompt);
+      const latencyMs = Date.now() - startTime;
+
+      // Log successful request
+      await prisma.aIRequest.create({
+        data: {
+          interviewId,
+          userId,
+          provider: resolvedConfig.provider,
+          model: resolvedConfig.model || "default",
+          latencyMs,
+          promptTokens: response.promptTokens ?? null,
+          completionTokens: response.completionTokens ?? null,
+          success: true,
+        },
+      });
+
+      return response.result;
+    } catch (error: any) {
+      const latencyMs = Date.now() - startTime;
+
+      // Log failed request
+      await prisma.aIRequest.create({
+        data: {
+          interviewId,
+          userId,
+          provider: resolvedConfig.provider,
+          model: resolvedConfig.model || "default",
+          latencyMs,
+          success: false,
+          error: error.message || "AI Provider execution failed",
+        },
+      });
+
+      throw error;
+    }
+  }
 }

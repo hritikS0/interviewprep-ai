@@ -31,6 +31,8 @@ export interface Interview {
   currentRound: number;
   createdAt: string;
   updatedAt: string;
+  interviewPlan?: any;
+  report?: any;
 }
 
 export const interviewService = {
@@ -71,6 +73,32 @@ export const interviewService = {
       message: string;
       data: any;
     }>(`/api/interviews/${id}/generate`);
+    return response.data.data;
+  },
+
+  async saveAnswer(id: string, questionText: string, answerText: string): Promise<any> {
+    const response = await api.post<{
+      success: boolean;
+      message: string;
+      data: any;
+    }>(`/api/interviews/${id}/answers`, { questionText, answerText });
+    return response.data.data;
+  },
+
+  async submitInterview(id: string): Promise<any> {
+    const response = await api.post<{
+      success: boolean;
+      message: string;
+      data: any;
+    }>(`/api/interviews/${id}/submit`);
+    return response.data.data;
+  },
+
+  async getRecommendedJobs(query?: string): Promise<any[]> {
+    const response = await api.get<{
+      success: boolean;
+      data: any[];
+    }>("/api/jobs", { params: { query } });
     return response.data.data;
   },
 };

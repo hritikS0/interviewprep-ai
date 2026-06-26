@@ -1,53 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import { interviewService } from '../services/interview'
+import { toast } from 'sonner'
 
-const stats = [
-  {
-    label: 'Interviews Completed',
-    value: '24',
-    subtitle: '+3 this week',
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="text-blue-500">
-        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-        <polyline points="22 4 12 14.01 9 11.01" />
-      </svg>
-    ),
-    bg: 'bg-blue-50/50 dark:bg-blue-950/15'
-  },
-  {
-    label: 'Average Score',
-    value: '78%',
-    subtitle: '+5% vs last month',
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="text-emerald-500">
-        <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-      </svg>
-    ),
-    bg: 'bg-emerald-50/50 dark:bg-emerald-950/15'
-  },
-  {
-    label: 'Hiring Readiness',
-    value: 'High',
-    subtitle: 'Above target threshold',
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="text-amber-500">
-        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-      </svg>
-    ),
-    bg: 'bg-amber-50/50 dark:bg-amber-950/15'
-  },
-  {
-    label: 'Study Streak',
-    value: '5 Days',
-    subtitle: 'Next milestone: 7 Days',
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="text-orange-500">
-        <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
-      </svg>
-    ),
-    bg: 'bg-orange-50/50 dark:bg-orange-950/15'
-  }
-]
+
 
 const recentInterviews = [
   { date: 'Jun 21, 2026', role: 'Software Engineer', type: 'Technical', score: 82, status: 'Completed' },
@@ -58,12 +14,30 @@ const recentInterviews = [
 ]
 
 export default function Dashboard() {
+  const [interviews, setInterviews] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
   const [tasks, setTasks] = useState([
     { id: 1, label: 'Practice Frontend coding (30 min)', completed: true },
     { id: 2, label: 'Review System Design checklists', completed: true },
     { id: 3, label: 'Complete 1 Mock Interview session', completed: false },
     { id: 4, label: 'Analyze Reports feedback reports', completed: false }
   ])
+
+  useEffect(() => {
+    const loadInterviews = async () => {
+      try {
+        setLoading(true)
+        const data = await interviewService.getInterviews()
+        setInterviews(data)
+      } catch (err: any) {
+        console.error('Failed to load interviews:', err)
+        toast.error('Failed to load recent interviews')
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadInterviews()
+  }, [])
 
   const toggleTask = (id: number) => {
     setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t))
@@ -72,6 +46,92 @@ export default function Dashboard() {
   const userJson = localStorage.getItem('user')
   const user = userJson ? JSON.parse(userJson) : { name: 'John Doe' }
   const firstName = user.name ? user.name.split(' ')[0] : 'User'
+
+  const completedDbInterviews = interviews.filter((i) => i.status === 'COMPLETED' && i.report)
+  const completedCount = completedDbInterviews.length
+  
+  // Calculate average score
+  const totalScore = completedDbInterviews.reduce((acc, curr) => acc + (curr.report?.overallScore || 0), 0)
+  const avgScore = completedCount > 0 ? Math.round(totalScore / completedCount) : null
+
+  // Hiring Readiness
+  let readiness = 'N/A'
+  if (avgScore !== null) {
+    readiness = avgScore >= 80 ? 'High' : avgScore >= 70 ? 'Medium' : 'Low'
+  }
+
+  const statsList = [
+    {
+      label: 'Interviews Completed',
+      value: completedCount > 0 ? String(completedCount) : '24',
+      subtitle: completedCount > 0 ? 'Real completed sessions' : '+3 this week',
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="text-blue-500">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+          <polyline points="22 4 12 14.01 9 11.01" />
+        </svg>
+      ),
+      bg: 'bg-blue-50/50 dark:bg-blue-950/15'
+    },
+    {
+      label: 'Average Score',
+      value: avgScore !== null ? `${avgScore}%` : '78%',
+      subtitle: avgScore !== null ? 'Dynamic score average' : '+5% vs last month',
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="text-emerald-500">
+          <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+        </svg>
+      ),
+      bg: 'bg-emerald-50/50 dark:bg-emerald-950/15'
+    },
+    {
+      label: 'Hiring Readiness',
+      value: readiness !== 'N/A' ? readiness : 'High',
+      subtitle: readiness !== 'N/A' ? 'Based on graded score' : 'Above target threshold',
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="text-amber-500">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+        </svg>
+      ),
+      bg: 'bg-amber-50/50 dark:bg-amber-950/15'
+    },
+    {
+      label: 'Study Streak',
+      value: '5 Days',
+      subtitle: 'Next milestone: 7 Days',
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="text-orange-500">
+          <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
+        </svg>
+      ),
+      bg: 'bg-orange-50/50 dark:bg-orange-950/15'
+    }
+  ]
+
+  const displayInterviews = completedCount > 0 
+    ? completedDbInterviews.map((i) => ({
+        id: i.id,
+        date: new Date(i.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+        role: i.role,
+        type: i.interviewType,
+        score: i.report?.overallScore || 0,
+        status: 'Completed'
+      }))
+    : recentInterviews.map((i) => ({ ...i, id: null }))
+
+  if (loading) {
+    return (
+      <div className="flex h-[400px] items-center justify-center text-text-primary">
+        <div className="flex flex-col items-center gap-4">
+          <svg className="animate-spin h-8 w-8 text-black dark:text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span className="text-[14px] font-bold">Loading dashboard...</span>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="w-full select-none space-y-6">
@@ -102,7 +162,7 @@ export default function Dashboard() {
 
       {/* Stats Cards Grid - 4 Columns */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map((stat) => (
+        {statsList.map((stat) => (
           <div
             key={stat.label}
             className="rounded-[16px] border border-border bg-surface p-5 hover:translate-y-[-2px] transition-all duration-200 shadow-2xs flex items-center justify-between"
@@ -253,7 +313,7 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {recentInterviews.map((row, i) => (
+                  {displayInterviews.map((row, i) => (
                     <tr key={i} className="border-b border-border last:border-0 hover:bg-[#FAFAF9] dark:hover:bg-zinc-900/30 transition-colors">
                       <td className="px-5 py-3.5 text-[13px] font-semibold text-text-secondary">{row.date}</td>
                       <td className="px-5 py-3.5 text-[13.5px] font-bold text-text-primary">{row.role}</td>
@@ -269,7 +329,10 @@ export default function Dashboard() {
                         </span>
                       </td>
                       <td className="px-5 py-3.5 text-right">
-                        <Link to="/report" className="text-[12.5px] font-bold text-accent hover:text-accent-hover transition-colors">
+                        <Link
+                          to={row.id ? `/report?interviewId=${row.id}` : "/report"}
+                          className="text-[12.5px] font-bold text-accent hover:text-accent-hover transition-colors"
+                        >
                           View Report
                         </Link>
                       </td>

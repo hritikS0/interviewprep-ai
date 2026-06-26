@@ -49,6 +49,30 @@ const roles = [
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
       </svg>
     )
+  },
+  {
+    id: 'customer',
+    title: 'Customer Success / Support',
+    description: 'Client communication, relationships, problem resolution',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+        <circle cx="9" cy="7" r="4" />
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+      </svg>
+    )
+  },
+  {
+    id: 'custom',
+    title: 'Custom Role',
+    description: 'Input any job title you would like to mock interview for',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+        <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z" />
+      </svg>
+    )
   }
 ]
 
@@ -79,6 +103,7 @@ const languages = [
 export default function InterviewSetup() {
   const [currentStep, setCurrentStep] = useState(0)
   const [selectedRole, setSelectedRole] = useState('frontend')
+  const [customRoleTitle, setCustomRoleTitle] = useState('')
   const [selectedLevel, setSelectedLevel] = useState('3-5')
   const [selectedType, setSelectedType] = useState('Technical')
   const [selectedDifficulty, setSelectedDifficulty] = useState('Medium')
@@ -105,7 +130,7 @@ export default function InterviewSetup() {
 
     createInterview.mutate(
       {
-        role: roles.find((r) => r.id === selectedRole)?.title || selectedRole,
+        role: selectedRole === 'custom' ? (customRoleTitle.trim() || 'Custom Role') : (roles.find((r) => r.id === selectedRole)?.title || selectedRole),
         experienceLevel: selectedLevel,
         interviewType: selectedType,
         difficulty: selectedDifficulty,
@@ -141,7 +166,23 @@ export default function InterviewSetup() {
     )
   }
 
-  const getRoleTitle = () => roles.find((r) => r.id === selectedRole)?.title || selectedRole
+  const handleFileUpload = (file: File) => {
+    if (!file) return
+
+    if (file.type === "text/plain" || file.name.endsWith(".txt")) {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const text = e.target?.result as string
+        setJd(text)
+        toast.success("Job description text extracted successfully!")
+      }
+      reader.readAsText(file)
+    } else {
+      toast.error("Format not supported for auto-extraction. Please copy and paste PDF/Word text directly below.")
+    }
+  }
+
+  const getRoleTitle = () => selectedRole === 'custom' ? (customRoleTitle.trim() || 'Custom Role') : (roles.find((r) => r.id === selectedRole)?.title || selectedRole)
   const getLevelTitle = () => levels.find((l) => l.id === selectedLevel)?.title || selectedLevel
   const getTypeTitle = () => interviewTypes.find((t) => t.id === selectedType)?.title || selectedType
   const getDifficultyTitle = () => difficulties.find((d) => d.id === selectedDifficulty)?.title || selectedDifficulty
@@ -222,6 +263,21 @@ export default function InterviewSetup() {
                 </button>
               ))}
             </div>
+
+            {selectedRole === 'custom' && (
+              <div className="mt-6">
+                <label className="text-[12px] font-bold text-text-secondary uppercase tracking-wider mb-2 block">
+                  Custom Role Title
+                </label>
+                <input
+                  type="text"
+                  value={customRoleTitle}
+                  onChange={(e) => setCustomRoleTitle(e.target.value)}
+                  placeholder="e.g. Data Engineer, DevOps Specialist, Customer Support Agent"
+                  className="w-full rounded-[12px] border border-border bg-surface px-4 py-3 text-[13.5px] text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-black dark:focus:border-white leading-relaxed transition-colors"
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -381,7 +437,12 @@ export default function InterviewSetup() {
               <div
                 onDragOver={(e) => { e.preventDefault(); setIsDragging(true) }}
                 onDragLeave={() => setIsDragging(false)}
-                onDrop={(e) => { e.preventDefault(); setIsDragging(false) }}
+                onDrop={(e) => { 
+                  e.preventDefault()
+                  setIsDragging(false)
+                  const file = e.dataTransfer.files?.[0]
+                  if (file) handleFileUpload(file)
+                }}
                 className={`rounded-[12px] border-2 border-dashed p-6 text-center transition-all duration-200 mb-4 ${
                   isDragging
                     ? 'border-black dark:border-white bg-neutral-50 dark:bg-neutral-900/30'
@@ -389,13 +450,17 @@ export default function InterviewSetup() {
                 }`}
               >
                 <div className="text-[13px] text-text-secondary mb-3">
-                  Drag and drop a job description (PDF, DOCX, TXT), or click to browse.
+                  Drag and drop a job description (.txt file), or click to browse.
                 </div>
                 <input
                   type="file"
-                  accept=".pdf,.doc,.docx,.txt"
+                  accept=".txt"
                   className="hidden"
                   id="jd-upload"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) handleFileUpload(file)
+                  }}
                 />
                 <button
                   onClick={() => document.getElementById('jd-upload')?.click()}

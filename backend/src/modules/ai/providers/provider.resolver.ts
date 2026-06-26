@@ -64,10 +64,15 @@ export class ProviderResolver {
         { statusCode: 500 }
       );
     }
+    let model = env.NVIDIA_MODEL;
+    if (model === "meta/llama-3.1-70b-instruct") {
+      model = "meta/llama-3.1-8b-instruct";
+    }
+
     return {
       provider: "NVIDIA",
       apiKey: env.NVIDIA_API_KEY,
-      model: env.NVIDIA_MODEL,
+      model,
       baseUrl: env.NVIDIA_API_URL,
     };
   }

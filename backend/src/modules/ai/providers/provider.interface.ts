@@ -29,5 +29,8 @@ export interface AIProvider {
   ): Promise<AIProviderResponse<InterviewPlanDto>>;
   evaluateAnswer(): Promise<any>;
   generateFollowup(): Promise<any>;
-  generateReport(): Promise<any>;
+  generateReport(
+    systemPrompt: string,
+    userPrompt: string
+  ): Promise<AIProviderResponse<any>>;
 }

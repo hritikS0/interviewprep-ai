@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { Sidebar } from '../components/Layout'
 import { interviewService } from '../services/interview'
@@ -19,6 +19,17 @@ export default function CodingRound() {
 
   const [code, setCode] = useState(`// Write your code here...`)
   const [language, setLanguage] = useState('TypeScript')
+  const [timeLeft, setTimeLeft] = useState<number | null>(null)
+
+  const codeRef = useRef(code)
+  useEffect(() => {
+    codeRef.current = code
+  }, [code])
+
+  const codingQuestionRef = useRef(codingQuestion)
+  useEffect(() => {
+    codingQuestionRef.current = codingQuestion
+  }, [codingQuestion])
 
   // Load interview details
   useEffect(() => {
@@ -66,6 +77,90 @@ export default function CodingRound() {
     loadInterview()
   }, [interviewId])
 
+  // Synchronized countdown timer utilizing localStorage
+  useEffect(() => {
+    if (!interview || !interviewId) return
+
+    const storageKey = `interview_end_time_${interviewId}`
+    let endTimeStr = localStorage.getItem(storageKey)
+    let endTime = endTimeStr ? parseInt(endTimeStr, 10) : null
+
+    if (!endTime) {
+      const durationMin = interview.duration || 30
+      endTime = Date.now() + durationMin * 60 * 1000
+      localStorage.setItem(storageKey, String(endTime))
+    }
+
+    const calculateTimeLeft = () => {
+      const difference = endTime! - Date.now()
+      if (difference <= 0) {
+        return 0
+      }
+      return Math.floor(difference / 1000)
+    }
+
+    setTimeLeft(calculateTimeLeft())
+
+    const intervalId = setInterval(() => {
+      const remaining = calculateTimeLeft()
+      setTimeLeft(remaining)
+      if (remaining <= 0) {
+        clearInterval(intervalId)
+      }
+    }, 1000)
+
+    return () => clearInterval(intervalId)
+  }, [interview, interviewId])
+
+  // Handle auto-submit on timer expiration
+  useEffect(() => {
+    if (timeLeft !== null && timeLeft <= 0 && !loading) {
+      const forceFinishInterview = async () => {
+        const curCode = codeRef.current
+        const curQuestion = codingQuestionRef.current
+        
+        if (curQuestion && curCode.trim()) {
+          try {
+            await interviewService.saveAnswer(interviewId!, curQuestion.question, curCode)
+          } catch (err) {
+            console.error('Failed to save code on timeout:', err)
+          }
+        }
+
+        if (interview && interview.interviewPlan) {
+          const roundsList = interview.interviewPlan.rounds || []
+          const allQ: any[] = []
+          roundsList.forEach((round: any) => {
+            const questions = round.questions || []
+            questions.forEach((q: any) => {
+              allQ.push(q)
+            })
+          })
+          localStorage.setItem(`interview_progress_${interviewId}`, String(allQ.length))
+        }
+
+        toast.error("Time is up! Submitting your coding challenge...")
+        navigate(`/interview/${interviewId}`)
+      }
+
+      forceFinishInterview()
+    }
+  }, [timeLeft, loading, interviewId, interview, navigate])
+
+  const formatTimeLeft = (seconds: number | null) => {
+    if (seconds === null) return '--:--'
+    if (seconds <= 0) return '00:00'
+    const hrs = Math.floor(seconds / 3600)
+    const mins = Math.floor((seconds % 3600) / 60)
+    const secs = seconds % 60
+
+    if (hrs > 0) {
+      return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+    }
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+  }
+
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-[#FAFAF9] dark:bg-[#09090B] text-text-primary">
@@ -99,8 +194,14 @@ export default function CodingRound() {
   const testCases = metadata.hiddenTestCases || []
 
   // Submit and advance progress
-  const handleSubmit = () => {
-    toast.success("Code submitted successfully! Moving to next round.")
+  const handleSubmit = async () => {
+    try {
+      await interviewService.saveAnswer(interviewId!, codingQuestion.question, code);
+      toast.success("Code submitted successfully! Moving to next round.");
+    } catch (err: any) {
+      console.error('Failed to save coding answer:', err);
+      toast.error('Failed to submit code. Proceeding anyway...');
+    }
 
     if (interview && interview.interviewPlan) {
       const roundsList = interview.interviewPlan.rounds || []
@@ -124,6 +225,70 @@ export default function CodingRound() {
     navigate(`/interview/${interviewId}`)
   }
 
+  // Skip and advance progress
+  const handleSkip = async () => {
+    try {
+      await interviewService.saveAnswer(interviewId!, codingQuestion.question, "Skipped (No solution provided)");
+      toast.success("Coding challenge skipped.");
+    } catch (err: any) {
+      console.error('Failed to skip coding challenge:', err);
+      toast.error('Failed to skip. Proceeding anyway...');
+    }
+
+    if (interview && interview.interviewPlan) {
+      const roundsList = interview.interviewPlan.rounds || []
+      const allQ: any[] = []
+      roundsList.forEach((round: any, roundIdx: number) => {
+        const questions = round.questions || []
+        questions.forEach((q: any) => {
+          allQ.push({
+            ...q,
+            roundIdx,
+          })
+        })
+      })
+
+      const codingIdx = allQ.findIndex(q => q.type === 'CODING')
+      if (codingIdx !== -1) {
+        localStorage.setItem(`interview_progress_${interviewId}`, String(codingIdx + 1))
+      }
+    }
+
+    navigate(`/interview/${interviewId}`)
+  }
+
+  // Back to previous question
+  const handleBack = async () => {
+    if (code.trim()) {
+      try {
+        await interviewService.saveAnswer(interviewId!, codingQuestion.question, code);
+      } catch (err) {
+        console.error('Failed to save code before going back:', err);
+      }
+    }
+
+    if (interview && interview.interviewPlan) {
+      const roundsList = interview.interviewPlan.rounds || []
+      const allQ: any[] = []
+      roundsList.forEach((round: any, roundIdx: number) => {
+        const questions = round.questions || []
+        questions.forEach((q: any) => {
+          allQ.push({
+            ...q,
+            roundIdx,
+          })
+        })
+      })
+
+      const codingIdx = allQ.findIndex(q => q.type === 'CODING')
+      if (codingIdx > 0) {
+        localStorage.setItem(`interview_progress_${interviewId}`, String(codingIdx - 1))
+      }
+    }
+
+    navigate(`/interview/${interviewId}`)
+  }
+
   return (
     <div className="flex h-screen bg-[#FAFAF9] dark:bg-[#09090B] overflow-hidden select-none font-sans transition-colors duration-200">
       <Sidebar />
@@ -135,6 +300,17 @@ export default function CodingRound() {
             <Link to="/dashboard" className="text-[13px] font-bold text-text-secondary hover:text-text-primary transition-colors">
               Exit
             </Link>
+
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-600"></span>
+              </span>
+              <span className="text-[13px] font-bold text-red-600 dark:text-red-400 tracking-wide font-mono">
+                {formatTimeLeft(timeLeft)}
+              </span>
+            </div>
+
             <span className="text-[12px] font-semibold text-text-secondary bg-[#F3F4F6] dark:bg-[#27272A] px-2.5 py-0.5 rounded-full">
               Complexity: {metadata.expectedComplexity || 'N/A'}
             </span>
@@ -195,6 +371,18 @@ export default function CodingRound() {
               <option>Go</option>
             </select>
             <div className="flex items-center gap-2">
+              <button 
+                onClick={handleBack}
+                className="px-4 py-1.5 rounded-full border border-[#444] text-[#CCC] bg-transparent text-[12.5px] font-bold hover:bg-[#222] transition-colors cursor-pointer"
+              >
+                Back
+              </button>
+              <button 
+                onClick={handleSkip}
+                className="px-4 py-1.5 rounded-full border border-[#444] text-[#CCC] bg-transparent text-[12.5px] font-bold hover:bg-[#222] transition-colors cursor-pointer"
+              >
+                Skip
+              </button>
               <button 
                 onClick={() => toast.success("Running tests...")}
                 className="px-4 py-1.5 rounded-full bg-[#2D2D2D] text-[#CCC] text-[12.5px] font-bold hover:bg-[#3D3D3D] transition-colors cursor-pointer"
