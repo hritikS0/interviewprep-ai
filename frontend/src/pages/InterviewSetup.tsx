@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useCreateInterview } from '../hooks/useCreateInterview'
+import { interviewService } from '../services/interview'
 
 const roles = [
   {
@@ -87,6 +88,7 @@ export default function InterviewSetup() {
   const [jd, setJd] = useState('')
   const [isDragging, setIsDragging] = useState(false)
   const [serverError, setServerError] = useState('')
+  const [isGenerating, setIsGenerating] = useState(false)
 
   const navigate = useNavigate()
   const createInterview = useCreateInterview()
@@ -98,6 +100,8 @@ export default function InterviewSetup() {
       toast.error('Duration must be between 15 and 120 minutes')
       return
     }
+
+    setIsGenerating(true)
 
     createInterview.mutate(
       {
@@ -111,15 +115,27 @@ export default function InterviewSetup() {
         jobDescription: jd.trim() || undefined,
       },
       {
-        onSuccess: (data) => {
-          toast.success('Interview created successfully!')
-          navigate(`/interview/${data.interviewId}`)
+        onSuccess: async (data) => {
+          try {
+            toast('Generating AI interview plan, please wait...')
+            await interviewService.generateInterviewPlan(data.interviewId)
+            toast.success('Interview plan generated successfully!')
+            navigate(`/interview/${data.interviewId}`)
+          } catch (genError: any) {
+            console.error('💥 AI Generation error:', genError)
+            const message = genError.response?.data?.message || genError.message || 'Failed to generate AI interview. Please try again.'
+            setServerError(message)
+            toast.error(message)
+          } finally {
+            setIsGenerating(false)
+          }
         },
         onError: (error) => {
           const message =
             error.message || 'Failed to create interview. Please try again.'
           setServerError(message)
           toast.error(message)
+          setIsGenerating(false)
         },
       }
     )
@@ -479,20 +495,20 @@ export default function InterviewSetup() {
           ) : (
             <button
               onClick={handleStartInterview}
-              disabled={createInterview.isPending}
+              disabled={createInterview.isPending || isGenerating}
               className={`inline-flex items-center gap-1.5 px-6 py-2.5 rounded-full text-[13px] font-bold transition-colors cursor-pointer ${
-                createInterview.isPending
+                createInterview.isPending || isGenerating
                   ? 'bg-neutral-300 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400 cursor-not-allowed'
                   : 'bg-black text-white dark:bg-white dark:text-black hover:bg-neutral-800 dark:hover:bg-neutral-200'
               }`}
             >
-              {createInterview.isPending ? (
+              {createInterview.isPending || isGenerating ? (
                 <>
                   <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  Creating...
+                  {isGenerating ? 'Generating AI...' : 'Creating...'}
                 </>
               ) : (
                 <>

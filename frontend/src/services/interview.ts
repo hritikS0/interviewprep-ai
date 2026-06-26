@@ -64,4 +64,13 @@ export const interviewService = {
   async deleteInterview(id: string): Promise<void> {
     await api.delete(`/api/interviews/${id}`);
   },
+
+  async generateInterviewPlan(id: string): Promise<any> {
+    const response = await api.post<{
+      success: boolean;
+      message: string;
+      data: any;
+    }>(`/api/interviews/${id}/generate`);
+    return response.data.data;
+  },
 };
