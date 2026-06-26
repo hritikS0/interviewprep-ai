@@ -19,7 +19,9 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  interviews Interview[]
+  interviews        Interview[]
+  aiProviderConfigs AIProviderConfig[]
+  aiRequests        AIRequest[]
 }
 
 model Interview {
@@ -34,12 +36,14 @@ model Interview {
   duration         Int
   companyName      String?
   jobDescription   String?
-  status           String   @default("PENDING")
+  status           String   @default("CREATED")
   currentRound     Int      @default(1)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
   questions        Question[]
+  interviewPlan    InterviewPlan?
+  aiRequests       AIRequest[]
 }
 
 model Question {
@@ -51,3 +55,77 @@ model Question {
   score        Int?
   feedback     String?
 }
+
+enum QuestionType {
+  INTRODUCTION
+  TECHNICAL
+  CODING
+  BEHAVIORAL
+}
+
+model AIProviderConfig {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider        String   // "NVIDIA" | "OPENAI" | "GEMINI" | "CLAUDE" | "GROQ"
+  encryptedApiKey String?
+  model           String?
+  baseUrl         String?
+  usePlatformKey  Boolean  @default(true)
+  isDefault       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, provider])
+}
+
+model AIRequest {
+  id               String     @id @default(uuid())
+  interviewId      String?
+  interview        Interview? @relation(fields: [interviewId], references: [id], onDelete: SetNull)
+  userId           String
+  user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider         String
+  model            String
+  latencyMs        Int
+  promptTokens     Int?
+  completionTokens Int?
+  success          Boolean
+  error            String?
+  createdAt        DateTime   @default(now())
+}
+
+model InterviewPlan {
+  id                String           @id @default(uuid())
+  interviewId       String           @unique
+  interview         Interview        @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  difficulty        String
+  estimatedDuration String
+  rounds            InterviewRound[]
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+}
+
+model InterviewRound {
+  id              String              @id @default(uuid())
+  interviewPlanId String
+  interviewPlan   InterviewPlan       @relation(fields: [interviewPlanId], references: [id], onDelete: Cascade)
+  name            String // "Introduction" | "Technical" | "Coding" | "Behavioral"
+  questions       GeneratedQuestion[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+}
+
+model GeneratedQuestion {
+  id          String         @id @default(uuid())
+  roundId     String
+  round       InterviewRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  type        QuestionType
+  topic       String?
+  difficulty  String?
+  question    String
+  metadata    Json? // Stores coding problem details (title, description, constraints, examples, expectedComplexity, hiddenTestCases)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+

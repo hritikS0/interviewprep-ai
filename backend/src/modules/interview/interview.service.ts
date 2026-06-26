@@ -38,9 +38,20 @@ export class InterviewService {
   async getInterviewById(
     id: string,
     userId: string
-  ): Promise<InterviewResponse> {
+  ): Promise<any> {
     const interview = await prisma.interview.findUnique({
       where: { id },
+      include: {
+        interviewPlan: {
+          include: {
+            rounds: {
+              include: {
+                questions: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!interview) {

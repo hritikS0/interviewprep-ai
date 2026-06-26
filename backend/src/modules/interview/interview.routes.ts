@@ -6,6 +6,7 @@ const router = Router();
 const controller = new InterviewController();
 
 router.post("/", authMiddleware, controller.create);
+router.post("/:id/generate", authMiddleware, controller.generate);
 router.get("/", authMiddleware, controller.getAll);
 router.get("/:id", authMiddleware, controller.getById);
 router.delete("/:id", authMiddleware, controller.delete);

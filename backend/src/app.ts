@@ -3,6 +3,7 @@ import cors from "cors";
 import authRouter from "./modules/auth";
 import interviewRouter from "./modules/interview";
 import { sendError } from "./utils/response";
+import { authLandingTemplate } from "./templates/authLanding";
 
 const app = express();
 
@@ -20,9 +21,16 @@ app.use("/auth", authRouter);
 // Interview Routes
 app.use("/api/interviews", interviewRouter);
 
-// Health Check Root Route
+
+// Health Check & Auth Redirect Root Route
 app.get("/", (req: Request, res: Response) => {
-  res.json({ success: true, message: "InterviewAI API is running" });
+  // If the client explicitly requests JSON (e.g. backend health check or API fetch), return JSON
+  if (req.headers.accept && req.headers.accept.includes("application/json")) {
+    return res.json({ success: true, message: "InterviewAI API is running" });
+  }
+
+  // Otherwise, render a beautiful HTML page that can handle client-side hashes
+  res.send(authLandingTemplate());
 });
 
 // Centralized error handler

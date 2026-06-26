@@ -2,12 +2,15 @@ import { Request, Response, NextFunction } from "express";
 import { InterviewService } from "./interview.service";
 import { CreateInterviewSchema } from "./interview.schema";
 import { sendSuccess, sendError } from "../../utils/response";
+import { InterviewGenerator } from "../../services/interview-generator";
 
 export class InterviewController {
   private interviewService: InterviewService;
+  private interviewGenerator: InterviewGenerator;
 
   constructor() {
     this.interviewService = new InterviewService();
+    this.interviewGenerator = new InterviewGenerator();
   }
 
   create = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -95,6 +98,31 @@ export class InterviewController {
         success: true,
         message: "Interview deleted successfully.",
         data: null,
+      });
+    } catch (error: unknown) {
+      next(error);
+    }
+  };
+
+  generate = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user) {
+        sendError(res, "Unauthorized", 401);
+        return;
+      }
+
+      const { id } = req.params as { id: string };
+      if (!id) {
+        sendError(res, "Interview ID is required", 400);
+        return;
+      }
+
+      const result = await this.interviewGenerator.generate(id, req.user.userId);
+
+      res.status(200).json({
+        success: true,
+        message: "Interview plan generated successfully.",
+        data: result,
       });
     } catch (error: unknown) {
       next(error);
