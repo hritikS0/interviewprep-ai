@@ -3,6 +3,7 @@ import { InterviewService } from "./interview.service";
 import { CreateInterviewSchema, SaveAnswerSchema } from "./interview.schema";
 import { sendSuccess, sendError } from "../../utils/response";
 import { InterviewGenerator } from "../../services/interview-generator";
+import { env } from "../../config/env";
 
 export class InterviewController {
   private interviewService: InterviewService;
@@ -178,6 +179,67 @@ export class InterviewController {
         success: true,
         message: "Interview submitted and report generated successfully.",
         data: result,
+      });
+    } catch (error: unknown) {
+      next(error);
+    }
+  };
+
+  transcribe = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.user) {
+        sendError(res, "Unauthorized", 401);
+        return;
+      }
+
+      const audioBuffer = req.body;
+      if (!audioBuffer || audioBuffer.length === 0) {
+        sendError(res, "No audio data received", 400);
+        return;
+      }
+
+      let apiKey = env.GROQ_KEY;
+      let url = "https://api.groq.com/openai/v1/audio/transcriptions";
+      let model = "whisper-large-v3";
+      let providerName = "Groq ASR";
+
+      if (!apiKey) {
+        // Fallback to NVIDIA NIM
+        apiKey = env.SPEECHRECOGNITION_KEY;
+        if (!apiKey) {
+          sendError(res, "No speech recognition API key configured on the server", 500);
+          return;
+        }
+        const asrBaseUrl = env.SPEECHRECOGNITION_URL || "https://ai.api.nvidia.com/v1";
+        url = `${asrBaseUrl.replace(/\/$/, "")}/audio/transcriptions`;
+        model = "openai/whisper-large-v3";
+        providerName = "NVIDIA ASR";
+      }
+
+      const formData = new FormData();
+      const blob = new Blob([audioBuffer], { type: "audio/webm" });
+      formData.append("file", blob, "audio.webm");
+      formData.append("model", model);
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errText = await response.text().catch(() => "Unknown error");
+        throw new Error(`${providerName} API failed with status ${response.status}: ${errText}`);
+      }
+
+      const data: any = await response.json();
+      const text = data?.text || "";
+
+      res.status(200).json({
+        success: true,
+        text,
       });
     } catch (error: unknown) {
       next(error);
