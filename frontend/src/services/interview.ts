@@ -101,4 +101,16 @@ export const interviewService = {
     }>("/api/jobs", { params: { query } });
     return response.data.data;
   },
+
+  async transcribeAudio(id: string, audioBlob: Blob): Promise<string> {
+    const response = await api.post<{
+      success: boolean;
+      text: string;
+    }>(`/api/interviews/${id}/transcribe`, audioBlob, {
+      headers: {
+        "Content-Type": audioBlob.type || "audio/webm",
+      },
+    });
+    return response.data.text;
+  },
 };

@@ -14,6 +14,9 @@ export default function LiveInterview() {
   const [isRecording, setIsRecording] = useState(false)
   const [interimText, setInterimText] = useState('')
   const [micNetworkError, setMicNetworkError] = useState(false)
+  const [isTranscribing, setIsTranscribing] = useState(false)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
   const [timeLeft, setTimeLeft] = useState<number | null>(null)
   const lastProcessedIndexRef = useRef(-1)
   const [isGrading, setIsGrading] = useState(false)
@@ -51,9 +54,14 @@ export default function LiveInterview() {
     currentQuestionRef.current = currentQuestion
   }, [currentQuestion])
 
+  const lastLoadedQuestionRef = useRef<string>('');
+
   // Load previous answer if it exists when question index changes
   useEffect(() => {
     if (!interview || !currentQuestion) return;
+    if (currentQuestion.question === lastLoadedQuestionRef.current) return;
+    
+    lastLoadedQuestionRef.current = currentQuestion.question;
     const savedQ = interview.questions?.find((q: any) => q.questionText === currentQuestion.question);
     if (savedQ && savedQ.answerText) {
       if (savedQ.answerText === "Skipped (No answer provided)") {
@@ -64,7 +72,7 @@ export default function LiveInterview() {
     } else {
       setAnswer("");
     }
-  }, [flatQuestionIndex, interview, currentQuestion]);
+  }, [currentQuestion, interview]);
   
   // Load interview details
   useEffect(() => {
@@ -190,80 +198,91 @@ export default function LiveInterview() {
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
   }
 
-  // Web Speech API for voice-to-text recording
+  // MediaRecorder for voice recording and server-side speech transcription
   useEffect(() => {
-    if (!isRecording) {
-      setInterimText('')
-      return
-    }
-    setMicNetworkError(false)
-    lastProcessedIndexRef.current = -1
-    setInterimText('')
+    let activeStream: MediaStream | null = null;
 
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (!SpeechRecognition) {
-      toast.error("Speech recognition is not supported in this browser. Please use Chrome, Safari or Edge, or type your answer.")
-      setIsRecording(false)
-      return
-    }
-
-    const recognition = new SpeechRecognition()
-    recognition.continuous = true
-    recognition.interimResults = true
-    recognition.lang = 'en-US'
-
-    recognition.onresult = (event: any) => {
-      let newInterimText = ''
-      let finalChunk = ''
-
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i]
-        if (result.isFinal) {
-          if (i > lastProcessedIndexRef.current) {
-            finalChunk += result[0].transcript
-            lastProcessedIndexRef.current = i
-          }
-        } else {
-          newInterimText += result[0].transcript
+    const startRecording = async () => {
+      setMicNetworkError(false);
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        activeStream = stream;
+        
+        // Find best mimeType supported
+        let options = { mimeType: 'audio/webm' };
+        if (MediaRecorder.isTypeSupported('audio/webm')) {
+          options = { mimeType: 'audio/webm' };
+        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+          options = { mimeType: 'audio/mp4' };
+        } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+          options = { mimeType: 'audio/ogg' };
+        } else if (MediaRecorder.isTypeSupported('audio/wav')) {
+          options = { mimeType: 'audio/wav' };
         }
+        
+        const mediaRecorder = new MediaRecorder(stream, options);
+        mediaRecorderRef.current = mediaRecorder;
+        audioChunksRef.current = [];
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
+          }
+        };
+
+        mediaRecorder.onstop = async () => {
+          const audioBlob = new Blob(audioChunksRef.current, { type: options.mimeType || 'audio/webm' });
+          
+          // Stop stream tracks to release device
+          stream.getTracks().forEach(track => track.stop());
+
+          if (audioBlob.size === 0) return;
+
+          try {
+            setIsTranscribing(true);
+            const transcriptText = await interviewService.transcribeAudio(interviewId!, audioBlob);
+            
+            if (transcriptText && transcriptText.trim()) {
+              setAnswer(prev => {
+                const trimmed = prev.trim();
+                return trimmed ? `${trimmed} ${transcriptText.trim()}` : transcriptText.trim();
+              });
+              toast.success('Transcription complete!');
+            }
+          } catch (err: any) {
+            console.error('ASR Transcription failed:', err);
+            setMicNetworkError(true);
+            toast.error('Speech recognition server error. Please type your response.');
+          } finally {
+            setIsTranscribing(false);
+          }
+        };
+
+        mediaRecorder.start();
+      } catch (err: any) {
+        console.error('Failed to access microphone:', err);
+        toast.error('Microphone access denied or not found. Please verify permissions.');
+        setIsRecording(false);
       }
+    };
 
-      if (finalChunk) {
-        setAnswer(prev => {
-          const trimmed = prev.trim()
-          const chunkTrimmed = finalChunk.trim()
-          return trimmed ? `${trimmed} ${chunkTrimmed}` : chunkTrimmed
-        })
+    if (isRecording) {
+      startRecording();
+    } else {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
       }
-      setInterimText(newInterimText)
     }
-
-    recognition.onerror = (event: any) => {
-      console.error("Speech recognition error:", event.error)
-      if (event.error === 'not-allowed') {
-        toast.error("Microphone access denied. Please enable mic permissions in your browser settings.")
-      } else if (event.error === 'network') {
-        setMicNetworkError(true)
-        toast.error("Speech recognition network error. The browser's speech transcription server could not be reached. Please check your internet connection or type your answer.")
-      } else {
-        toast.error(`Mic error: ${event.error}. You can type your answer instead.`)
-      }
-      setIsRecording(false)
-      setInterimText('')
-    }
-
-    recognition.onend = () => {
-      setIsRecording(false)
-      setInterimText('')
-    }
-
-    recognition.start()
 
     return () => {
-      recognition.stop()
-      setInterimText('')
-    }
-  }, [isRecording])
+      if (activeStream) {
+        activeStream.getTracks().forEach(track => track.stop());
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+    };
+  }, [isRecording, interviewId]);
 
   // Automatically trigger report generation when interview is completed
   useEffect(() => {
@@ -670,13 +689,22 @@ export default function LiveInterview() {
                     placeholder="Type your response or use voice..."
                     className="flex-1 w-full p-5 text-[14px] text-text-primary dark:text-white placeholder:text-text-secondary/60 border-0 outline-none resize-none leading-relaxed focus:ring-0 focus:outline-none bg-surface"
                   />
-                  {isRecording && interimText && (
+                  {isRecording && (
                     <div className="px-5 py-3 text-[12px] text-text-secondary italic border-t border-border bg-neutral-50/30 dark:bg-[#18181b]/30 flex items-center gap-2 flex-shrink-0">
                       <span className="relative flex h-2 w-2">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                         <span className="relative inline-flex rounded-full h-2 w-2 bg-red-600"></span>
                       </span>
-                      <span>"{interimText}"</span>
+                      <span>Recording voice... speak clearly. Click stop to transcribe.</span>
+                    </div>
+                  )}
+                  {isTranscribing && (
+                    <div className="px-5 py-3 text-[12px] text-text-secondary italic border-t border-border bg-neutral-50/30 dark:bg-[#18181b]/30 flex items-center gap-2 flex-shrink-0">
+                      <svg className="animate-spin h-3.5 w-3.5 text-current" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>Transcribing your audio using AI...</span>
                     </div>
                   )}
                 </>
