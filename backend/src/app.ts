@@ -28,7 +28,7 @@ app.use("/api/jobs", jobsRouter);
 
 
 // Health Check & Auth Redirect Root Route
-app.get("/", (req: Request, res: Response) => {
+app.get("/health", (req: Request, res: Response) => {
   // If the client explicitly requests JSON (e.g. backend health check or API fetch), return JSON
   if (req.headers.accept && req.headers.accept.includes("application/json")) {
     return res.json({ success: true, message: "InterviewAI API is running" });

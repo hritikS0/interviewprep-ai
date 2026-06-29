@@ -134,7 +134,7 @@ export class InterviewGenerator {
       await prisma.interview.update({
         where: { id: interviewId },
         data: { status: "FAILED" },
-      }).catch((dbErr) => console.error("Failed to update status to FAILED:", dbErr));
+      }).catch((dbErr: unknown) => console.error("Failed to update status to FAILED:", dbErr));
 
       throw error;
     }

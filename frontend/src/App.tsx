@@ -1,17 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Routes, Route, useNavigate } from 'react-router-dom'
-import Layout from './components/Layout'
-import Landing from './pages/Landing'
-import Dashboard from './pages/Dashboard'
-import InterviewSetup from './pages/InterviewSetup'
-import LiveInterview from './pages/LiveInterview'
-import CodingRound from './pages/CodingRound'
-import Report from './pages/Report'
-import JobRecommendations from './pages/JobRecommendations'
-import Settings from './pages/Settings'
-import Login from './pages/Login'
-import Signup from './pages/Signup'
-import ProtectedRoute from './components/ProtectedRoute'
+import { useNavigate } from 'react-router-dom'
+import Router from './Router'
 import { authService } from './services/auth'
 
 export default function App() {
@@ -26,7 +15,7 @@ export default function App() {
         setIsVerifying(true)
         setVerificationError('')
         try {
-          const params = new URLSearchParams(hash.substring(1)) // Remove the '#'
+          const params = new URLSearchParams(hash.substring(1))
           const accessToken = params.get('access_token')
           const refreshToken = params.get('refresh_token')
 
@@ -34,7 +23,6 @@ export default function App() {
             throw new Error('Verification tokens missing from URL')
           }
 
-          // Fetch user profile from backend using the temporary access token
           const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
           const response = await fetch(`${API_URL}/auth/me`, {
             method: 'GET',
@@ -50,26 +38,21 @@ export default function App() {
 
           const user = data.data
 
-          // Save the session
           authService.saveSession({
             user,
             accessToken,
             refreshToken,
           })
 
-          // Clear the pending state
           localStorage.removeItem('pendingEmailConfirmation')
           localStorage.removeItem('pendingEmail')
 
-          // Clear URL hash fragment cleanly
           window.history.replaceState(null, '', window.location.pathname)
 
-          // Redirect to dashboard
           navigate('/dashboard', { replace: true })
         } catch (err: any) {
-          console.error('❌ Email confirmation error:', err)
+          console.error('Email confirmation error:', err)
           setVerificationError(err.message || 'Verification failed. Please try signing in.')
-          // Clear URL hash fragment cleanly
           window.history.replaceState(null, '', window.location.pathname)
         } finally {
           setIsVerifying(false)
@@ -132,25 +115,5 @@ export default function App() {
     )
   }
 
-  return (
-    <Routes>
-      <Route path="/" element={<Landing />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/signup" element={<Signup />} />
-      
-      {/* Protected Routes */}
-      <Route element={<ProtectedRoute />}>
-        <Route element={<Layout />}>
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/setup" element={<InterviewSetup />} />
-          <Route path="/report" element={<Report />} />
-          <Route path="/jobs" element={<JobRecommendations />} />
-          <Route path="/settings" element={<Settings />} />
-        </Route>
-        <Route path="/interview" element={<LiveInterview />} />
-        <Route path="/interview/:interviewId" element={<LiveInterview />} />
-        <Route path="/coding" element={<CodingRound />} />
-      </Route>
-    </Routes>
-  )
+  return <Router />
 }

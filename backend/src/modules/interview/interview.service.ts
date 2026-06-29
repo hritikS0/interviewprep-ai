@@ -182,7 +182,7 @@ export class InterviewService {
       throw Object.assign(new Error("Interview plan not found"), { statusCode: 404 });
     }
 
-    const allGeneratedQuestions: any[] = [];
+    const allGeneratedQuestions: { question: string; type: string }[] = [];
     interviewPlan.rounds.forEach((round) => {
       round.questions.forEach((q) => {
         allGeneratedQuestions.push({
