@@ -2,7 +2,7 @@ import { prisma } from "../config/prisma";
 import { AiService } from "./ai.service";
 import { buildGenerateInterviewPrompt } from "../modules/ai/prompts/generateInterview.prompt";
 import { retry } from "../utils/retry";
-import { QuestionType } from "@prisma/client";
+import { QuestionType, Prisma } from "@prisma/client";
 
 export class InterviewGenerator {
   private aiService: AiService;
@@ -62,7 +62,7 @@ export class InterviewGenerator {
       );
 
       // 3. Store in DB inside a Prisma transaction
-      const savedPlan = await prisma.$transaction(async (tx) => {
+      const savedPlan = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         // Create InterviewPlan
         const plan = await tx.interviewPlan.create({
           data: {

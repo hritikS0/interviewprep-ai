@@ -2,6 +2,7 @@ import { prisma } from "../../config/prisma";
 import type { CreateInterviewInput, InterviewResponse } from "./interview.types";
 import { AiService } from "../../services/ai.service";
 import { buildGenerateReportPrompt } from "../ai/prompts/generateReport.prompt";
+import type { InterviewRound, GeneratedQuestion, Question } from "@prisma/client";
 
 export class InterviewService {
   private aiService = new AiService();
@@ -183,8 +184,8 @@ export class InterviewService {
     }
 
     const allGeneratedQuestions: { question: string; type: string }[] = [];
-    interviewPlan.rounds.forEach((round) => {
-      round.questions.forEach((q) => {
+    interviewPlan.rounds.forEach((round: InterviewRound & { questions: GeneratedQuestion[] }) => {
+      round.questions.forEach((q: GeneratedQuestion) => {
         allGeneratedQuestions.push({
           question: q.question,
           type: q.type,
@@ -200,7 +201,7 @@ export class InterviewService {
     // Map each generated question to its corresponding answer
     const questionsAndAnswers = allGeneratedQuestions.map((gq) => {
       const aq = answeredQuestions.find(
-        (a) => a.questionText.trim() === gq.question.trim()
+        (a: Question) => a.questionText.trim() === gq.question.trim()
       );
       return {
         question: gq.question,
