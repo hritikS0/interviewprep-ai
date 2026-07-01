@@ -12,13 +12,11 @@ export default function LiveInterview() {
   
   const [answer, setAnswer] = useState('')
   const [isRecording, setIsRecording] = useState(false)
-  const [interimText, setInterimText] = useState('')
   const [micNetworkError, setMicNetworkError] = useState(false)
   const [isTranscribing, setIsTranscribing] = useState(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const [timeLeft, setTimeLeft] = useState<number | null>(null)
-  const lastProcessedIndexRef = useRef(-1)
   const [isGrading, setIsGrading] = useState(false)
   const [gradingError, setGradingError] = useState('')
   const navigate = useNavigate()

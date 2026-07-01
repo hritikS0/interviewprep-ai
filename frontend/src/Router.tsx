@@ -11,7 +11,6 @@ const InterviewSetup = lazy(() => import('./pages/InterviewSetup'))
 const LiveInterview = lazy(() => import('./pages/LiveInterview'))
 const CodingRound = lazy(() => import('./pages/CodingRound'))
 const Report = lazy(() => import('./pages/Report'))
-const JobRecommendations = lazy(() => import('./pages/JobRecommendations'))
 const Settings = lazy(() => import('./pages/Settings'))
 
 function PageSkeleton() {
@@ -48,7 +47,6 @@ export default function Router() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/setup" element={<InterviewSetup />} />
               <Route path="/report" element={<Report />} />
-              <Route path="/jobs" element={<JobRecommendations />} />
               <Route path="/settings" element={<Settings />} />
             </Route>
             <Route path="/interview" element={<LiveInterview />} />

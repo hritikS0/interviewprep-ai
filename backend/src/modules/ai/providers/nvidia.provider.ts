@@ -1,6 +1,6 @@
 import { AIProvider, InterviewPlanDto, AIProviderResponse } from "./provider.interface";
 import { parseAIResponse } from "../../../utils/parseAIResponse";
-import { InterviewPlanSchema } from "../validators/interview.schema";
+import { InterviewPlanResponseSchema } from "../validators/interview.schema";
 import { ReportSchema } from "../validators/report.schema";
 
 export class NvidiaProvider implements AIProvider {
@@ -28,7 +28,7 @@ export class NvidiaProvider implements AIProvider {
     const url = `${this.baseUrl.replace(/\/$/, "")}/chat/completions`;
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 seconds timeout
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
 
     try {
       const response = await fetch(url, {
@@ -66,8 +66,8 @@ export class NvidiaProvider implements AIProvider {
         throw Object.assign(new Error("NVIDIA NIM returned an empty response"), { statusCode: 502 });
       }
 
-      // Parse, clean up markdown tags, and validate against Zod schema
-      const result = parseAIResponse(content, InterviewPlanSchema);
+      const parsed = parseAIResponse(content, InterviewPlanResponseSchema);
+      const result: InterviewPlanDto = parsed.interviewPlan;
 
       return {
         result,
@@ -105,7 +105,7 @@ export class NvidiaProvider implements AIProvider {
     const url = `${this.baseUrl.replace(/\/$/, "")}/chat/completions`;
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 180000); // 180 seconds timeout for report generation
+    const timeoutId = setTimeout(() => controller.abort(), 180000);
 
     try {
       const response = await fetch(url, {

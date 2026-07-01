@@ -23,7 +23,8 @@ export default function App() {
             throw new Error('Verification tokens missing from URL')
           }
 
-          const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
+          const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001'
+          const API_URL = rawApiUrl.replace(/\/+$/, '')
           const response = await fetch(`${API_URL}/auth/me`, {
             method: 'GET',
             headers: {

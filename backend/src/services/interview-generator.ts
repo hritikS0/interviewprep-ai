@@ -3,6 +3,13 @@ import { AiService } from "./ai.service";
 import { buildGenerateInterviewPrompt } from "../modules/ai/prompts/generateInterview.prompt";
 import { retry } from "../utils/retry";
 import { QuestionType, Prisma } from "@prisma/client";
+import type {
+  InterviewRoundDto,
+  IntroductionRoundDto,
+  TechnicalRoundDto,
+  CodingRoundDto,
+  BehavioralRoundDto,
+} from "../modules/ai/providers/provider.interface";
 
 export class InterviewGenerator {
   private aiService: AiService;
@@ -81,27 +88,75 @@ export class InterviewGenerator {
             },
           });
 
-          // Map round name to QuestionType enum
-          let questionType: QuestionType = QuestionType.TECHNICAL;
-          if (roundData.name === "Introduction") {
-            questionType = QuestionType.INTRODUCTION;
-          } else if (roundData.name === "Coding") {
-            questionType = QuestionType.CODING;
-          } else if (roundData.name === "Behavioral") {
-            questionType = QuestionType.BEHAVIORAL;
-          }
-
-          if (roundData.questions && roundData.questions.length > 0) {
-            await tx.generatedQuestion.createMany({
-              data: roundData.questions.map((q) => ({
-                roundId: round.id,
-                type: questionType,
-                topic: q.topic || null,
-                difficulty: q.difficulty || null,
-                question: q.question,
-                metadata: q.metadata ? JSON.parse(JSON.stringify(q.metadata)) : null,
-              })),
-            });
+          switch (roundData.name) {
+            case "Introduction": {
+              const intro = roundData as IntroductionRoundDto;
+              if (intro.questions && intro.questions.length > 0) {
+                await tx.generatedQuestion.createMany({
+                  data: intro.questions.map((q) => ({
+                    roundId: round.id,
+                    type: QuestionType.INTRODUCTION,
+                    topic: null,
+                    difficulty: null,
+                    question: q.question,
+                  })),
+                });
+              }
+              break;
+            }
+            case "Technical": {
+              const tech = roundData as TechnicalRoundDto;
+              if (tech.questions && tech.questions.length > 0) {
+                await tx.generatedQuestion.createMany({
+                  data: tech.questions.map((q) => ({
+                    roundId: round.id,
+                    type: QuestionType.TECHNICAL,
+                    topic: q.topic,
+                    difficulty: q.difficulty,
+                    question: q.question,
+                    metadata: {
+                      expectedAnswerPoints: q.expectedAnswerPoints,
+                      followUpPossible: q.followUpPossible,
+                    } as any,
+                  })),
+                });
+              }
+              break;
+            }
+            case "Coding": {
+              const coding = roundData as CodingRoundDto;
+              if (coding.problem) {
+                await tx.generatedQuestion.create({
+                  data: {
+                    roundId: round.id,
+                    type: QuestionType.CODING,
+                    topic: coding.problem.title,
+                    difficulty: coding.problem.difficulty,
+                    question: coding.problem.problemStatement,
+                    metadata: coding.problem as any,
+                  },
+                });
+              }
+              break;
+            }
+            case "Behavioral": {
+              const behav = roundData as BehavioralRoundDto;
+              if (behav.questions && behav.questions.length > 0) {
+                await tx.generatedQuestion.createMany({
+                  data: behav.questions.map((q) => ({
+                    roundId: round.id,
+                    type: QuestionType.BEHAVIORAL,
+                    topic: q.competency,
+                    difficulty: null,
+                    question: q.question,
+                    metadata: {
+                      whatToEvaluate: q.whatToEvaluate,
+                    } as any,
+                  })),
+                });
+              }
+              break;
+            }
           }
         }
 

@@ -12,10 +12,6 @@ export class AiService {
     this.factory = new ProviderFactory();
   }
 
-  /**
-   * Orchestrates the call to the resolved AI provider.
-   * Logs every request (latency, success/failure, prompt/completion tokens) in the AIRequest table.
-   */
   async generateInterview(
     userId: string,
     interviewId: string,
@@ -28,7 +24,6 @@ export class AiService {
     try {
       resolvedConfig = await this.resolver.resolve(userId);
     } catch (error: any) {
-      // If resolver fails, log failure as UNKNOWN configuration resolution failure
       const latencyMs = Date.now() - startTime;
       await prisma.aIRequest.create({
         data: {
@@ -50,7 +45,6 @@ export class AiService {
       const response = await providerInstance.generateInterview(systemPrompt, userPrompt);
       const latencyMs = Date.now() - startTime;
 
-      // Log successful request
       await prisma.aIRequest.create({
         data: {
           interviewId,
@@ -68,7 +62,6 @@ export class AiService {
     } catch (error: any) {
       const latencyMs = Date.now() - startTime;
 
-      // Log failed request
       await prisma.aIRequest.create({
         data: {
           interviewId,
@@ -118,7 +111,6 @@ export class AiService {
       const response = await providerInstance.generateReport(systemPrompt, userPrompt);
       const latencyMs = Date.now() - startTime;
 
-      // Log successful request
       await prisma.aIRequest.create({
         data: {
           interviewId,
@@ -136,7 +128,6 @@ export class AiService {
     } catch (error: any) {
       const latencyMs = Date.now() - startTime;
 
-      // Log failed request
       await prisma.aIRequest.create({
         data: {
           interviewId,

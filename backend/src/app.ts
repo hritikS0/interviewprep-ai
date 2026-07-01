@@ -2,7 +2,6 @@ import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import authRouter from "./modules/auth";
 import interviewRouter from "./modules/interview";
-import jobsRouter from "./modules/jobs";
 import { sendError } from "./utils/response";
 import { authLandingTemplate } from "./templates/authLanding";
 
@@ -21,10 +20,6 @@ app.use("/auth", authRouter);
 
 // Interview Routes
 app.use("/api/interviews", interviewRouter);
-
-// Jobs Routes
-app.use("/api/jobs", jobsRouter);
-
 
 
 // Health Check & Auth Redirect Root Route

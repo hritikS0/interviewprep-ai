@@ -1,16 +1,65 @@
-export interface GeneratedQuestionDto {
-  topic?: string | null;
-  difficulty?: string | null;
+export interface IntroductionQuestionDto {
+  id: string;
   question: string;
-  metadata?: any | null;
 }
 
-export interface InterviewRoundDto {
-  name: "Introduction" | "Technical" | "Coding" | "Behavioral";
-  questions: GeneratedQuestionDto[];
+export interface TechnicalQuestionDto {
+  id: string;
+  topic: string;
+  difficulty: string;
+  question: string;
+  expectedAnswerPoints: string[];
+  followUpPossible: boolean;
 }
+
+export interface CodingProblemDto {
+  title: string;
+  difficulty: string;
+  problemStatement: string;
+  inputFormat: string;
+  outputFormat: string;
+  constraints: string[];
+  examples: { input: string; output: string }[];
+  starterCode: { javascript: string; java: string; python: string };
+  hiddenTestCases: { input: string; output: string }[];
+  expectedTimeComplexity: string;
+  expectedSpaceComplexity: string;
+}
+
+export interface BehavioralQuestionDto {
+  competency: string;
+  question: string;
+  whatToEvaluate: string;
+}
+
+export interface IntroductionRoundDto {
+  name: "Introduction";
+  questions: IntroductionQuestionDto[];
+}
+
+export interface TechnicalRoundDto {
+  name: "Technical";
+  questions: TechnicalQuestionDto[];
+}
+
+export interface CodingRoundDto {
+  name: "Coding";
+  problem: CodingProblemDto;
+}
+
+export interface BehavioralRoundDto {
+  name: "Behavioral";
+  questions: BehavioralQuestionDto[];
+}
+
+export type InterviewRoundDto =
+  | IntroductionRoundDto
+  | TechnicalRoundDto
+  | CodingRoundDto
+  | BehavioralRoundDto;
 
 export interface InterviewPlanDto {
+  role: string;
   difficulty: string;
   estimatedDuration: string;
   rounds: InterviewRoundDto[];
